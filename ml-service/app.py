@@ -1,57 +1,40 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import joblib
 
 app = Flask(__name__)
-
-# Load model (optional if you want later)
-# model = joblib.load("model.pkl")
+CORS(app)
+model = joblib.load("model.pkl")
 
 def extract_features(url):
-    features = {}
+    return [[
+        len(url),
+        1 if url.startswith("https") else 0,
+        url.count("."),
+        url.count("/"),
+        sum(c.isdigit() for c in url),
+        1 if "@" in url else 0,
+        1 if "-" in url else 0,
+        1 if any(word in url.lower() for word in ["login","verify","bank","free","secure"]) else 0
+    ]]
 
-    features['https'] = 1 if url.startswith("https") else 0
+@app.route("/")
+def home():
+    return "ML server running 🚀"
 
-    suspicious_words = ["free", "cheap", "offer", "discount"]
-    features['suspicious'] = 1 if any(word in url.lower() for word in suspicious_words) else 0
-
-    features['length'] = len(url)
-
-    return features
-
-def simple_model(features):
-    score = 0
-
-    if features['https'] == 0:
-        score += 30
-
-    if features['suspicious'] == 1:
-        score += 40
-
-    if features['length'] > 50:
-        score += 20
-
-    return min(score, 100)
-
-# ✅ CORRECT ROUTE
 @app.route("/predict", methods=["POST"])
 def predict():
     data = request.json
     url = data.get("url")
 
-    features = extract_features(url)
-    risk_score = simple_model(features)
-
-    prediction = "Scam" if risk_score > 50 else "Genuine"
+    features = [[len(url)]]
+    pred = model.predict(features)[0] 
+    prob = model.predict_proba(features)[0][1]
 
     return jsonify({
-        "prediction": prediction,
-        "riskScore": risk_score
+        "prediction": "Scam" if pred == 1 else "Genuine",
+        "riskScore": int(prob * 100)
     })
 
-# ✅ OPTIONAL health check
-@app.route("/")
-def home():
-    return "ML server is running 🚀"
-
 if __name__ == "__main__":
-    app.run(port=8000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=True)

@@ -11,9 +11,10 @@ function App() {
     setResult(null);
 
     try {
-      const res = await axios.post("http://localhost:5000/check-url", { url });
+      const res = await axios.post("http://127.0.0.1:8000/predict", { url });
       setResult(res.data);
     } catch (err) {
+      console.log(err); 
       alert("Backend not connected");
     }
 
