@@ -7,6 +7,10 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   const checkWebsite = async () => {
+    if (!url.trim()) {
+      alert("Please enter a URL");
+      return;
+    }
     setLoading(true);
     setResult(null);
 
