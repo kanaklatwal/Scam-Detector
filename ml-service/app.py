@@ -34,6 +34,8 @@ def simple_model(features):
     return min(score, 100)
 
 @app.route("/predict", methods=["POST"])
+def home():
+    return "ML server is running 🚀"
 def predict():
     data = request.json
     url = data.get("url")
