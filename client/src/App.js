@@ -11,10 +11,12 @@ function App() {
     setResult(null);
 
     try {
-      const res = await axios.post("http://127.0.0.1:8000/predict", { url });
+      const res = await axios.post("http://127.0.0.1:8000/predict", {
+        url: url,
+      });
       setResult(res.data);
     } catch (err) {
-      console.log(err); 
+      console.log(err);
       alert("Backend not connected");
     }
 
@@ -23,7 +25,6 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-indigo-900 via-purple-900 to-pink-800 flex items-center justify-center">
-      
       <div className="bg-white/10 backdrop-blur-lg border border-white/20 p-8 rounded-2xl shadow-xl w-[420px] text-center text-white">
         
         <h1 className="text-3xl font-bold mb-6">
@@ -72,7 +73,6 @@ function App() {
             </p>
           </div>
         )}
-
       </div>
     </div>
   );
