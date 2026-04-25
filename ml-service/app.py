@@ -1,20 +1,19 @@
 from flask import Flask, request, jsonify
-import random
-import re
+import joblib
 
 app = Flask(__name__)
+
+# Load model (optional if you want later)
+# model = joblib.load("model.pkl")
 
 def extract_features(url):
     features = {}
 
-    # HTTPS check
     features['https'] = 1 if url.startswith("https") else 0
 
-    # Suspicious keywords
     suspicious_words = ["free", "cheap", "offer", "discount"]
     features['suspicious'] = 1 if any(word in url.lower() for word in suspicious_words) else 0
 
-    # Length of URL
     features['length'] = len(url)
 
     return features
@@ -33,9 +32,8 @@ def simple_model(features):
 
     return min(score, 100)
 
+# ✅ CORRECT ROUTE
 @app.route("/predict", methods=["POST"])
-def home():
-    return "ML server is running 🚀"
 def predict():
     data = request.json
     url = data.get("url")
@@ -50,5 +48,10 @@ def predict():
         "riskScore": risk_score
     })
 
+# ✅ OPTIONAL health check
+@app.route("/")
+def home():
+    return "ML server is running 🚀"
+
 if __name__ == "__main__":
-    app.run(port=8000)
+    app.run(port=8000, debug=True)
