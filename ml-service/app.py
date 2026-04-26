@@ -60,7 +60,7 @@ def extract_features(url):
         entropy_value
     ]]
 
-# -------- VIRUSTOTAL CHECK --------
+# -------- VIRUSTOTAL --------
 def check_url_virustotal(url):
     try:
         url_bytes = url.encode("utf-8")
@@ -71,17 +71,16 @@ def check_url_virustotal(url):
 
         response = requests.get(api_url, headers=headers)
 
-        # ⏳ If not analyzed yet
-        if response.status_code != 200:
+        if response.status_code == 404:
             requests.post(
                 "https://www.virustotal.com/api/v3/urls",
                 headers=headers,
                 data={"url": url}
             )
-            return {
-                "prediction": "Analyzing",
-                "riskScore": 0
-            }
+            return {"prediction": "Analyzing", "riskScore": 0}
+
+        if response.status_code != 200:
+            return {"prediction": "Error", "riskScore": 0}
 
         data = response.json()
         stats = data["data"]["attributes"]["last_analysis_stats"]
@@ -89,16 +88,21 @@ def check_url_virustotal(url):
         malicious = stats.get("malicious", 0)
         suspicious = stats.get("suspicious", 0)
 
+        total = malicious + suspicious
+
+        if total == 0:
+            return {"prediction": "Analyzing", "riskScore": 0}
+
         risk = malicious * 20 + suspicious * 10
 
-        if malicious == 0 and suspicious == 0:
-            return {"prediction": "Genuine", "riskScore": 5}
-        else:
+        if malicious > 0:
             return {"prediction": "Scam", "riskScore": min(risk, 100)}
+        else:
+            return {"prediction": "Genuine", "riskScore": 5}
 
     except Exception as e:
         print("❌ VT error:", e)
-        return None
+        return {"prediction": "Error", "riskScore": 0}
 
 # -------- ROUTES --------
 @app.route("/")
@@ -116,7 +120,9 @@ def predict():
 
         # 🔥 STEP 1: VirusTotal
         vt_result = check_url_virustotal(url)
-        if vt_result:
+
+        # ✅ agar VT ne clear result diya
+        if vt_result and vt_result["prediction"] in ["Scam", "Genuine"]:
             return jsonify(vt_result)
 
         # 🔥 STEP 2: ML fallback
@@ -124,10 +130,15 @@ def predict():
         pred = model.predict(features)[0]
         prob = model.predict_proba(features)[0][1]
 
-        return jsonify({
-            "prediction": "Scam" if pred == 1 else "Genuine",
-            "riskScore": int(prob * 100)
-        })
+        risk = int(prob * 100)
+
+        # 🔥 SMART DECISION
+        if risk > 70:
+            return jsonify({"prediction": "Scam", "riskScore": risk})
+        elif risk < 30:
+            return jsonify({"prediction": "Genuine", "riskScore": risk})
+        else:
+            return jsonify({"prediction": "Suspicious", "riskScore": risk})
 
     except Exception as e:
         print("❌ Prediction error:", e)
