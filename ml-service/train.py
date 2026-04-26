@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
 import joblib
 import json
 import re
@@ -23,6 +24,9 @@ df["label"] = df["label"].map({
 
 df = df.dropna(subset=["label"])
 
+# =========================
+# HELPERS
+# =========================
 def entropy(s):
     s = str(s)
     prob = [float(s.count(c)) / len(s) for c in set(s)]
@@ -36,9 +40,8 @@ def is_random_string(s):
     return 1 if unique_ratio > 0.6 else 0
 
 # =========================
-# FEATURE EXTRACTION (URL BASED)
+# FEATURE EXTRACTION
 # =========================
-
 suspicious_words = ["login", "verify", "account", "bank", "secure", "update", "free", "win"]
 
 def extract_features(url):
@@ -48,8 +51,8 @@ def extract_features(url):
         url = "http://" + url
 
     keyword_flag = 1 if any(word in url for word in suspicious_words) else 0
-    random_flag = is_random_string(url) 
-    entropy_value = entropy(url) 
+    random_flag = is_random_string(url)
+    entropy_value = entropy(url)
 
     return [
         len(url),
@@ -58,17 +61,17 @@ def extract_features(url):
         url.count("/"),
         url.count("@"),
         int("https" in url),
-        int("http" in url),
         int("www" in url),
         int(".com" in url),
         sum(c.isdigit() for c in url),
         keyword_flag,
         random_flag,
-        entropy_value 
+        entropy_value
     ]
 
-
-# Apply features
+# =========================
+# APPLY FEATURES
+# =========================
 X = np.array(df["url"].apply(extract_features).tolist())
 y = df["label"].values
 
@@ -91,14 +94,22 @@ model = RandomForestClassifier(
 
 model.fit(X_train, y_train)
 
+# =========================
+# EVALUATION
+# =========================
 print("Train Accuracy:", model.score(X_train, y_train))
 print("Test Accuracy:", model.score(X_test, y_test))
 
+y_pred = model.predict(X_test)
+print("\nClassification Report:\n")
+print(classification_report(y_test, y_pred))
+
 # =========================
-# SAVE
+# SAVE MODEL
 # =========================
 joblib.dump(model, "model.pkl")
 
+# Feature names (IMPORTANT - must match exactly)
 feature_names = [
     "length",
     "dots",
@@ -106,7 +117,6 @@ feature_names = [
     "slashes",
     "ats",
     "https",
-    "http",
     "www",
     "com",
     "digits",
@@ -118,4 +128,4 @@ feature_names = [
 with open("features.json", "w") as f:
     json.dump(feature_names, f)
 
-print("✅ Model saved")
+print("✅ Model + features saved successfully")

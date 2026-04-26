@@ -7,18 +7,42 @@ import base64
 import joblib
 import re
 import math
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 CORS(app)
 
-# 🔐 Load .env
+# 🔐 ENV
 load_dotenv()
 API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 
-# 📦 Load ML model
+# 📦 MODEL
 model = joblib.load("model.pkl")
 
+# 🔥 CACHE
+cache = {}
+
+# ✅ WHITELIST
+SAFE_DOMAINS = [
+    "google.com",
+    "facebook.com",
+    "youtube.com",
+    "amazon.com",
+    "instagram.com"
+]
+
+# ❌ BLACKLIST
+SCAM_DOMAINS = [
+    "login-free-offer.xyz",
+    "free-money-now.xyz"
+]
+
 # -------- HELPERS --------
+def get_domain(url):
+    parsed = urlparse(url)
+    domain = parsed.netloc
+    return domain.replace("www.", "")
+
 def entropy(s):
     s = str(s)
     prob = [float(s.count(c)) / len(s) for c in set(s)]
@@ -31,11 +55,17 @@ def is_random_string(url):
     unique_ratio = len(set(letters)) / len(letters)
     return 1 if unique_ratio > 0.6 else 0
 
+def is_safe(domain):
+    return domain in SAFE_DOMAINS
+
+def is_scam(domain):
+    return domain in SCAM_DOMAINS
+
+# -------- FEATURES --------
 suspicious_words = ["login", "verify", "account", "bank", "secure", "update", "free", "win"]
 
-# -------- ML FEATURES --------
 def extract_features(url):
-    url = str(url).strip().lower()
+    url = str(url).lower()
 
     if not url.startswith("http"):
         url = "http://" + url
@@ -77,10 +107,10 @@ def check_url_virustotal(url):
                 headers=headers,
                 data={"url": url}
             )
-            return {"prediction": "Analyzing", "riskScore": 0}
+            return {"status": "Analyzing"}
 
         if response.status_code != 200:
-            return {"prediction": "Error", "riskScore": 0}
+            return None
 
         data = response.json()
         stats = data["data"]["attributes"]["last_analysis_stats"]
@@ -88,64 +118,97 @@ def check_url_virustotal(url):
         malicious = stats.get("malicious", 0)
         suspicious = stats.get("suspicious", 0)
 
-        total = malicious + suspicious
-
-        if total == 0:
-            return {"prediction": "Analyzing", "riskScore": 0}
-
         risk = malicious * 20 + suspicious * 10
 
-        if malicious > 0:
-            return {"prediction": "Scam", "riskScore": min(risk, 100)}
-        else:
-            return {"prediction": "Genuine", "riskScore": 5}
+        return {
+            "malicious": malicious,
+            "suspicious": suspicious,
+            "risk": min(risk, 100)
+        }
 
-    except Exception as e:
-        print("❌ VT error:", e)
-        return {"prediction": "Error", "riskScore": 0}
+    except:
+        return None
 
-# -------- ROUTES --------
-@app.route("/")
-def home():
-    return "ML server running 🚀"
-
+# -------- ROUTE --------
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json()
-        url = data.get("url")
+        url = data.get("url", "").lower()
 
         if not url:
             return jsonify({"error": "URL required"}), 400
 
-        # 🔥 STEP 1: VirusTotal
-        vt_result = check_url_virustotal(url)
+        domain = get_domain(url)
 
-        # ✅ agar VT ne clear result diya
-        if vt_result and vt_result["prediction"] in ["Scam", "Genuine"]:
-            return jsonify(vt_result)
+        # 🔥 CACHE
+        if url in cache:
+            return jsonify(cache[url])
 
-        # 🔥 STEP 2: ML fallback
+        # ✅ WHITELIST
+        if is_safe(domain):
+            result = {
+                "prediction": "Genuine",
+                "riskScore": 0,
+                "source": "Whitelist (Trusted Domain)"
+            }
+            cache[url] = result
+            return jsonify(result)
+
+        # ❌ BLACKLIST
+        if is_scam(domain):
+            result = {
+                "prediction": "Scam",
+                "riskScore": 100,
+                "source": "Blacklist (Known Scam)"
+            }
+            cache[url] = result
+            return jsonify(result)
+
+        # 🌐 VIRUSTOTAL
+        vt = check_url_virustotal(url)
+
+        if vt:
+            if vt.get("status") == "Analyzing":
+                return jsonify({
+                    "prediction": "Analyzing",
+                    "riskScore": 0,
+                    "source": "VirusTotal scanning"
+                })
+
+            if vt["malicious"] > 0:
+                result = {
+                    "prediction": "Scam",
+                    "riskScore": vt["risk"],
+                    "source": "VirusTotal"
+                }
+                cache[url] = result
+                return jsonify(result)
+
+        # 🤖 ML FALLBACK
         features = extract_features(url)
-        pred = model.predict(features)[0]
         prob = model.predict_proba(features)[0][1]
-
         risk = int(prob * 100)
 
-        # 🔥 SMART DECISION
-        if risk > 70:
-            return jsonify({"prediction": "Scam", "riskScore": risk})
-        elif risk < 30:
-            return jsonify({"prediction": "Genuine", "riskScore": risk})
+        if risk > 80:
+            prediction = "Scam"
+        elif risk < 20:
+            prediction = "Genuine"
         else:
-            return jsonify({"prediction": "Suspicious", "riskScore": risk})
+            prediction = "Suspicious"
+
+        result = {
+            "prediction": prediction,
+            "riskScore": risk,
+            "source": "ML Model"
+        }
+
+        cache[url] = result
+        return jsonify(result)
 
     except Exception as e:
-        print("❌ Prediction error:", e)
-        return jsonify({
-            "prediction": "Error",
-            "riskScore": 0
-        })
+        print("Error:", e)
+        return jsonify({"prediction": "Error", "riskScore": 0})
 
 # -------- RUN --------
 if __name__ == "__main__":
