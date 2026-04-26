@@ -1,21 +1,21 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+import os
 import requests
 import base64
 import joblib
 import re
 import math
-import os
 
 app = Flask(__name__)
 CORS(app)
 
+# 🔐 Load .env
 load_dotenv()
-
 API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 
-# Load ML model 
+# 📦 Load ML model
 model = joblib.load("model.pkl")
 
 # -------- HELPERS --------
@@ -67,21 +67,21 @@ def check_url_virustotal(url):
         url_id = base64.urlsafe_b64encode(url_bytes).decode("utf-8").strip("=")
 
         api_url = f"https://www.virustotal.com/api/v3/urls/{url_id}"
-
         headers = {"x-apikey": API_KEY}
 
         response = requests.get(api_url, headers=headers)
 
+        # ⏳ If not analyzed yet
         if response.status_code != 200:
             requests.post(
-                  "https://www.virustotal.com/api/v3/urls",
-                   headers=headers,
-                   data={"url": url}
+                "https://www.virustotal.com/api/v3/urls",
+                headers=headers,
+                data={"url": url}
             )
-        return {
-           "prediction": "Analyzing",
-            "riskScore": 0
-        }
+            return {
+                "prediction": "Analyzing",
+                "riskScore": 0
+            }
 
         data = response.json()
         stats = data["data"]["attributes"]["last_analysis_stats"]
@@ -100,10 +100,12 @@ def check_url_virustotal(url):
         print("❌ VT error:", e)
         return None
 
-# -------- ROUTE --------
-@app.route("/predict", methods=["POST"])
+# -------- ROUTES --------
+@app.route("/")
 def home():
     return "ML server running 🚀"
+
+@app.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json()
@@ -112,13 +114,12 @@ def predict():
         if not url:
             return jsonify({"error": "URL required"}), 400
 
-        # 🔥 STEP 1: VirusTotal try karo
+        # 🔥 STEP 1: VirusTotal
         vt_result = check_url_virustotal(url)
-
         if vt_result:
             return jsonify(vt_result)
 
-        # 🔥 STEP 2: fallback ML
+        # 🔥 STEP 2: ML fallback
         features = extract_features(url)
         pred = model.predict(features)[0]
         prob = model.predict_proba(features)[0][1]
