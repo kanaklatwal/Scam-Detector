@@ -57,11 +57,13 @@ def entropy(s):
     prob = [float(s.count(c)) / len(s) for c in set(s)]
     return -sum([p * math.log2(p) for p in prob])
 
+# 🔥 FIXED RANDOM CHECK
 def is_random_string(url):
     letters = re.sub(r'[^a-z]', '', url.lower())
-    if len(letters) == 0:
+    if len(letters) < 5:
         return 0
-    return 1 if len(set(letters)) / len(letters) > 0.6 else 0
+    unique_ratio = len(set(letters)) / len(letters)
+    return 1 if unique_ratio > 0.5 else 0
 
 def is_safe(domain):
     return any(domain == d or domain.endswith("." + d) for d in SAFE_DOMAINS)
@@ -121,32 +123,24 @@ def check_url_virustotal(url):
         malicious = stats.get("malicious", 0)
         suspicious = stats.get("suspicious", 0)
 
-        # 🔥 FIX: proper classification
         if malicious == 0 and suspicious == 0:
-            return {
-                "prediction": "Genuine",
-                "riskScore": 5,
-                "source": "VirusTotal"
-            }
+            return {"prediction": "Genuine", "riskScore": 5, "source": "VirusTotal"}
 
         if malicious > 0:
-            return {
-                "prediction": "Scam",
-                "riskScore": min(100, malicious * 20),
-                "source": "VirusTotal"
-            }
+            return {"prediction": "Scam", "riskScore": min(100, malicious * 20), "source": "VirusTotal"}
 
         if suspicious > 0:
-            return {
-                "prediction": "Suspicious",
-                "riskScore": min(100, suspicious * 10),
-                "source": "VirusTotal"
-            }
+            return {"prediction": "Suspicious", "riskScore": min(100, suspicious * 10), "source": "VirusTotal"}
 
     except:
         return None
 
-# -------- ROUTE --------
+# -------- ROUTES --------
+
+@app.route("/")
+def home():
+    return "🚀 Scam Detection API is running"
+
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -155,23 +149,47 @@ def predict():
         url = clean_url(data.get("url", ""))
 
         if not url:
-            return jsonify({"prediction": "Invalid", "riskScore": 0})
+            return jsonify({"prediction": "Invalid", "riskScore": 90})
 
         domain = get_domain(url)
 
+        # CACHE
         if url in cache:
             return jsonify(cache[url])
 
+        # WHITELIST
         if is_safe(domain):
             result = {"prediction": "Genuine", "riskScore": 0, "source": "Whitelist"}
             cache[url] = result
             return jsonify(result)
 
+        # BLACKLIST
         if is_scam(domain):
             result = {"prediction": "Scam", "riskScore": 100, "source": "Blacklist"}
             cache[url] = result
             return jsonify(result)
 
+        # 🔥 FEATURE EXTRACTION FIRST
+        features = extract_features(url)
+        entropy_value = features[0][-1]
+        random_flag = features[0][-2]
+
+        # 🔥 STRONG HEURISTIC (MAIN FIX)
+        if (
+            entropy_value > 3.8 or
+            random_flag == 1 or
+            len(domain) > 25 or
+            not re.search(r"\.[a-z]{2,}$", domain)
+        ):
+            result = {
+                "prediction": "Suspicious",
+                "riskScore": 70,
+                "source": "Heuristic"
+            }
+            cache[url] = result
+            return jsonify(result)
+
+        # VIRUSTOTAL AFTER HEURISTIC
         vt = check_url_virustotal(url)
 
         if vt:
@@ -181,8 +199,7 @@ def predict():
             cache[url] = vt
             return jsonify(vt)
 
-        # ML fallback
-        features = extract_features(url)
+        # ML MODEL
         prob = model.predict_proba(features)[0][1]
         risk = int(prob * 100)
 
@@ -193,13 +210,19 @@ def predict():
         else:
             prediction = "Suspicious"
 
-        result = {"prediction": prediction, "riskScore": risk, "source": "ML Model"}
+        result = {
+            "prediction": prediction,
+            "riskScore": risk,
+            "source": "ML Model"
+        }
+
         cache[url] = result
         return jsonify(result)
 
     except Exception as e:
         print("Error:", e)
         return jsonify({"prediction": "Error", "riskScore": 0})
+
 
 # -------- RUN --------
 
