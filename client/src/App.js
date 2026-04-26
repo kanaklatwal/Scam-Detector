@@ -11,6 +11,7 @@ function App() {
       alert("Please enter a URL");
       return;
     }
+
     setLoading(true);
     setResult(null);
 
@@ -20,63 +21,101 @@ function App() {
       });
       setResult(res.data);
     } catch (err) {
-      console.log(err);
       alert("Backend not connected");
     }
 
     setLoading(false);
   };
 
+  const isScam = result?.prediction === "Scam";
+  const isAnalyzing = result?.prediction === "Analyzing";
   return (
-    <div className="min-h-screen bg-gradient-to-r from-indigo-900 via-purple-900 to-pink-800 flex items-center justify-center">
-      <div className="bg-white/10 backdrop-blur-lg border border-white/20 p-8 rounded-2xl shadow-xl w-[420px] text-center text-white">
-        
-        <h1 className="text-3xl font-bold mb-6">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black via-purple-900 to-pink-900 px-4">
+
+      <div className="backdrop-blur-xl bg-white/10 border border-white/20 shadow-2xl rounded-3xl p-8 w-full max-w-md text-white transition-all duration-500">
+
+        {/* Title */}
+        <h1 className="text-3xl font-bold text-center mb-2">
           🚨 Scam Detector
         </h1>
+        <p className="text-center text-gray-300 text-sm mb-6">
+          Check if a website is safe or phishing
+        </p>
 
-        <div className="flex gap-2">
+        {/* Input */}
+        <div className="flex gap-2 mb-4">
           <input
             type="text"
-            placeholder="Enter website URL..."
+            placeholder="https://example.com"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            className="flex-1 p-2 rounded-lg text-black outline-none"
+            className="flex-1 p-3 rounded-xl bg-white/20 placeholder-gray-300 text-white 
+            focus:outline-none focus:ring-2 focus:ring-pink-400 transition"
           />
+
           <button
             onClick={checkWebsite}
-            className="bg-red-500 px-4 py-2 rounded-lg hover:bg-red-600"
+            disabled={loading}
+            className="bg-gradient-to-r from-pink-500 to-red-500 
+            hover:scale-105 hover:shadow-lg transition-all duration-300 
+            px-5 py-2 rounded-xl font-semibold disabled:opacity-50"
           >
-            Check
+            {loading ? "..." : "Check"}
           </button>
         </div>
 
+        {/* Loading Spinner */}
         {loading && (
-          <p className="mt-4 animate-pulse text-blue-300">
-            Checking...
-          </p>
+          <div className="flex justify-center mt-6">
+            <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+          </div>
         )}
 
-        {result && (
-          <div className="mt-6">
-            <h2 className={`text-xl font-semibold ${
-              result.prediction === "Scam" ? "text-red-400" : "text-green-400"
+         {isAnalyzing && (
+            <h2 className="text-yellow-400 text-xl font-bold mt-4">
+                ⏳ Analyzing URL...
+            </h2>
+         )}
+        {/* Result */}
+        {result && !loading && !isAnalyzing && (
+          <div className="mt-6 text-center animate-fade-in">
+
+            {/* Status */}
+            <h2 className={`text-2xl font-bold mb-3 ${
+              isScam 
+                ? "text-red-400 drop-shadow-[0_0_10px_rgba(255,0,0,0.7)]" 
+                : "text-green-400 drop-shadow-[0_0_10px_rgba(0,255,0,0.7)]"
             }`}>
-              {result.prediction}
+              {isScam ? "⚠️ Scam Detected" : "✅ Safe Website"}
             </h2>
 
-            <div className="w-full bg-gray-700 rounded-full h-3 mt-3">
+            {/* Message */}
+            <p className="text-sm text-gray-300 mb-3">
+              {isScam 
+                ? "This website looks suspicious. Avoid entering personal data."
+                : "This website appears safe to use."}
+            </p>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-white/20 rounded-full h-3 mt-2 overflow-hidden">
               <div
-                className="bg-red-500 h-3 rounded-full"
+                className={`h-3 rounded-full transition-all duration-700 ${
+                  isScam 
+                    ? "bg-red-500 shadow-[0_0_10px_rgba(255,0,0,0.7)]" 
+                    : "bg-green-500 shadow-[0_0_10px_rgba(0,255,0,0.7)]"
+                }`}
                 style={{ width: `${result.riskScore}%` }}
               ></div>
             </div>
 
-            <p className="mt-2 text-gray-300">
-              Risk Score: {result.riskScore}%
+            {/* Score */}
+            <p className="mt-3 text-gray-300 text-sm">
+              Risk Score: <span className="font-semibold">{result.riskScore}%</span>
             </p>
+
           </div>
         )}
+
       </div>
     </div>
   );

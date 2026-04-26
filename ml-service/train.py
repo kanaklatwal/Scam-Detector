@@ -4,74 +4,84 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 import joblib
 import json
+import re
+import math
 
 # =========================
-# 1. LOAD DATA
+# LOAD DATA
 # =========================
-df = pd.read_csv(
-    "../fraudulent-website-detection/data/ALL-phishing-links.txt",
-    header=None,
-    sep=",",
-    engine="python",
-    on_bad_lines="skip"
-)
+df = pd.read_csv("dataset_phishing.csv")
 
-# Take only needed columns
-df = df.iloc[:, :3]
-df.columns = ["id", "url", "source"]
+# Fix label
+df = df.rename(columns={"status": "label"})
+df["label"] = df["label"].astype(str).str.lower()
 
-# Keep only url
-df = df[["url"]]
+df["label"] = df["label"].map({
+    "phishing": 1,
+    "legitimate": 0
+})
 
-# All are phishing
-df["label"] = 1
+df = df.dropna(subset=["label"])
 
-df = df.dropna(subset=["url"])
-df["url"] = df["url"].astype(str)
+def entropy(s):
+    s = str(s)
+    prob = [float(s.count(c)) / len(s) for c in set(s)]
+    return -sum([p * math.log2(p) for p in prob])
+
+def is_random_string(s):
+    letters = re.sub(r'[^a-z]', '', s)
+    if len(letters) == 0:
+        return 0
+    unique_ratio = len(set(letters)) / len(letters)
+    return 1 if unique_ratio > 0.6 else 0
 
 # =========================
-# 2. CREATE FEATURES
+# FEATURE EXTRACTION (URL BASED)
 # =========================
+
+suspicious_words = ["login", "verify", "account", "bank", "secure", "update", "free", "win"]
+
 def extract_features(url):
-    try:
-        if not isinstance(url, str):
-            return [0,0,0,0,0,0,0]
-        return [
-           len(url),                 # length
-           url.count("."),           # dots
-           url.count("-"),           # hyphens
-           url.count("/"),           # slashes
-           int("https" in url),      # https or not
-           int("@" in url),          # @ symbol
-            int("//" in url[8:]),     # double slash redirect
-        ]
-    except Exception as e:
-        return [0,0,0,0,0,0,0]
+    url = str(url).lower()
 
-# Apply feature extraction
+    if not url.startswith("http"):
+        url = "http://" + url
+
+    keyword_flag = 1 if any(word in url for word in suspicious_words) else 0
+    random_flag = is_random_string(url) 
+    entropy_value = entropy(url) 
+
+    return [
+        len(url),
+        url.count("."),
+        url.count("-"),
+        url.count("/"),
+        url.count("@"),
+        int("https" in url),
+        int("http" in url),
+        int("www" in url),
+        int(".com" in url),
+        sum(c.isdigit() for c in url),
+        keyword_flag,
+        random_flag,
+        entropy_value 
+    ]
+
+
+# Apply features
 X = np.array(df["url"].apply(extract_features).tolist())
-y = df["label"]
-
-# ⚠️ Add fake legit data (for demo balance)
-df_legit = df.sample(5000, random_state=42)
-df_legit["label"] = 0
-
-X_legit = np.array(df_legit["url"].apply(extract_features).tolist())
-y_legit = df_legit["label"]
-
-# Combine
-X = np.vstack((X, X_legit))
-y = np.concatenate((y, y_legit))
-
-print("Data ready:", X.shape)
+y = df["label"].values
 
 # =========================
-# 3. TRAIN MODEL
+# SPLIT
 # =========================
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+    X, y, test_size=0.2, random_state=42, stratify=y
 )
 
+# =========================
+# MODEL
+# =========================
 model = RandomForestClassifier(
     n_estimators=200,
     max_depth=10,
@@ -85,22 +95,27 @@ print("Train Accuracy:", model.score(X_train, y_train))
 print("Test Accuracy:", model.score(X_test, y_test))
 
 # =========================
-# 4. SAVE MODEL
+# SAVE
 # =========================
 joblib.dump(model, "model.pkl")
 
-# Save feature order (important for app.py)
 feature_names = [
-    "url_length",
-    "dot_count",
-    "hyphen_count",
-    "slash_count",
+    "length",
+    "dots",
+    "hyphens",
+    "slashes",
+    "ats",
     "https",
-    "at_symbol",
-    "double_slash"
+    "http",
+    "www",
+    "com",
+    "digits",
+    "keywords",
+    "random",
+    "entropy"
 ]
 
 with open("features.json", "w") as f:
     json.dump(feature_names, f)
 
-print("✅ Model + features saved")
+print("✅ Model saved")

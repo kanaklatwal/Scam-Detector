@@ -1,16 +1,29 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from dotenv import load_dotenv
+import requests
+import base64
 import joblib
-import json
 import re
+import math
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Load model
+load_dotenv()
+
+API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
+
+# Load ML model 
 model = joblib.load("model.pkl")
 
 # -------- HELPERS --------
+def entropy(s):
+    s = str(s)
+    prob = [float(s.count(c)) / len(s) for c in set(s)]
+    return -sum([p * math.log2(p) for p in prob])
+
 def is_random_string(url):
     letters = re.sub(r'[^a-z]', '', url.lower())
     if len(letters) == 0:
@@ -20,45 +33,77 @@ def is_random_string(url):
 
 suspicious_words = ["login", "verify", "account", "bank", "secure", "update", "free", "win"]
 
-# -------- FEATURE EXTRACTION --------
+# -------- ML FEATURES --------
 def extract_features(url):
+    url = str(url).strip().lower()
+
+    if not url.startswith("http"):
+        url = "http://" + url
+
+    keyword_flag = 1 if any(word in url for word in suspicious_words) else 0
+    random_flag = is_random_string(url)
+    entropy_value = entropy(url)
+
+    return [[
+        len(url),
+        url.count("."),
+        url.count("-"),
+        url.count("/"),
+        url.count("@"),
+        int("https" in url),
+        int("http" in url),
+        int("www" in url),
+        int(".com" in url),
+        sum(c.isdigit() for c in url),
+        keyword_flag,
+        random_flag,
+        entropy_value
+    ]]
+
+# -------- VIRUSTOTAL CHECK --------
+def check_url_virustotal(url):
     try:
-        url = str(url).strip().lower()
+        url_bytes = url.encode("utf-8")
+        url_id = base64.urlsafe_b64encode(url_bytes).decode("utf-8").strip("=")
 
-        if not url:
-            return [[0]*12]
+        api_url = f"https://www.virustotal.com/api/v3/urls/{url_id}"
 
-        if not url.startswith("http"):
-            url = "http://" + url
+        headers = {"x-apikey": API_KEY}
 
-        keyword_flag = 1 if any(word in url for word in suspicious_words) else 0
-        random_flag = is_random_string(url)
+        response = requests.get(api_url, headers=headers)
 
-        return [[
-            len(url),
-            url.count("."),
-            url.count("-"),
-            url.count("/"),
-            url.count("@"),
-            int("https" in url),
-            int("http" in url),
-            int("www" in url),
-            int(".com" in url),
-            sum(c.isdigit() for c in url),
-            keyword_flag,
-            random_flag
-        ]]
+        if response.status_code != 200:
+            requests.post(
+                  "https://www.virustotal.com/api/v3/urls",
+                   headers=headers,
+                   data={"url": url}
+            )
+        return {
+           "prediction": "Analyzing",
+            "riskScore": 0
+        }
+
+        data = response.json()
+        stats = data["data"]["attributes"]["last_analysis_stats"]
+
+        malicious = stats.get("malicious", 0)
+        suspicious = stats.get("suspicious", 0)
+
+        risk = malicious * 20 + suspicious * 10
+
+        if malicious == 0 and suspicious == 0:
+            return {"prediction": "Genuine", "riskScore": 5}
+        else:
+            return {"prediction": "Scam", "riskScore": min(risk, 100)}
 
     except Exception as e:
-        print("❌ Feature error:", e)
-        return [[0]*12]
+        print("❌ VT error:", e)
+        return None
 
-# -------- ROUTES --------
-@app.route("/")
+# -------- ROUTE --------
+@app.route("/predict", methods=["POST"])
 def home():
     return "ML server running 🚀"
-
-@app.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json()
@@ -66,15 +111,15 @@ def predict():
 
         if not url:
             return jsonify({"error": "URL required"}), 400
-        
-        if is_random_string(url) == 1:
-             return jsonify({
-                 "prediction": "Scam",
-                 "riskScore": 85
-             })
-        features = extract_features(url)
-        print("Features:", features)
 
+        # 🔥 STEP 1: VirusTotal try karo
+        vt_result = check_url_virustotal(url)
+
+        if vt_result:
+            return jsonify(vt_result)
+
+        # 🔥 STEP 2: fallback ML
+        features = extract_features(url)
         pred = model.predict(features)[0]
         prob = model.predict_proba(features)[0][1]
 
@@ -88,7 +133,7 @@ def predict():
         return jsonify({
             "prediction": "Error",
             "riskScore": 0
-        }), 200
+        })
 
 # -------- RUN --------
 if __name__ == "__main__":
