@@ -1,1 +1,1 @@
-["url_length", "dot_count", "hyphen_count", "slash_count", "https", "at_symbol", "double_slash"]
+["length", "dots", "hyphens", "slashes", "ats", "https", "http", "www", "com", "digits", "keywords", "random"]

@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import joblib
 import json
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -9,33 +10,48 @@ CORS(app)
 # Load model
 model = joblib.load("model.pkl")
 
-# Load feature order
-with open("features.json", "r") as f:
-    feature_names = json.load(f)
+# -------- HELPERS --------
+def is_random_string(url):
+    letters = re.sub(r'[^a-z]', '', url.lower())
+    if len(letters) == 0:
+        return 0
+    unique_ratio = len(set(letters)) / len(letters)
+    return 1 if unique_ratio > 0.6 else 0
 
-# -------- FEATURE EXTRACTION (MATCH TRAIN.PY) --------
+suspicious_words = ["login", "verify", "account", "bank", "secure", "update", "free", "win"]
+
+# -------- FEATURE EXTRACTION --------
 def extract_features(url):
     try:
-        url = str(url).strip()
+        url = str(url).strip().lower()
+
+        if not url:
+            return [[0]*12]
 
         if not url.startswith("http"):
             url = "http://" + url
 
-        features = [
-            len(url),                 # url_length
-            url.count("."),           # dot_count
-            url.count("-"),           # hyphen_count
-            url.count("/"),           # slash_count
-            int("https" in url),      # https
-            int("@" in url),          # at_symbol
-            int("//" in url[8:])      # double slash
-        ]
+        keyword_flag = 1 if any(word in url for word in suspicious_words) else 0
+        random_flag = is_random_string(url)
 
-        return [features]
+        return [[
+            len(url),
+            url.count("."),
+            url.count("-"),
+            url.count("/"),
+            url.count("@"),
+            int("https" in url),
+            int("http" in url),
+            int("www" in url),
+            int(".com" in url),
+            sum(c.isdigit() for c in url),
+            keyword_flag,
+            random_flag
+        ]]
 
     except Exception as e:
         print("❌ Feature error:", e)
-        return [[0] * len(feature_names)]
+        return [[0]*12]
 
 # -------- ROUTES --------
 @app.route("/")
@@ -50,7 +66,12 @@ def predict():
 
         if not url:
             return jsonify({"error": "URL required"}), 400
-
+        
+        if is_random_string(url) == 1:
+             return jsonify({
+                 "prediction": "Scam",
+                 "riskScore": 85
+             })
         features = extract_features(url)
         print("Features:", features)
 
@@ -63,7 +84,7 @@ def predict():
         })
 
     except Exception as e:
-        print("❌ Prediction crash:", e)
+        print("❌ Prediction error:", e)
         return jsonify({
             "prediction": "Error",
             "riskScore": 0
