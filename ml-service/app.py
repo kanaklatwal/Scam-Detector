@@ -12,17 +12,13 @@ from urllib.parse import urlparse
 app = Flask(__name__)
 CORS(app)
 
-# 🔐 ENV
 load_dotenv()
 API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 
-# 📦 MODEL
 model = joblib.load("model.pkl")
 
-# 🔥 CACHE
 cache = {}
 
-# ✅ WHITELIST
 SAFE_DOMAINS = [
     "google.com",
     "facebook.com",
@@ -31,20 +27,33 @@ SAFE_DOMAINS = [
     "instagram.com"
 ]
 
-# ❌ BLACKLIST
 SCAM_DOMAINS = [
     "login-free-offer.xyz",
     "free-money-now.xyz"
 ]
 
 # -------- HELPERS --------
+
+def clean_url(url):
+    url = url.strip()
+    if not url.startswith("http"):
+        url = "http://" + url
+    try:
+        parsed = urlparse(url)
+        if not parsed.netloc:
+            return None
+        return url
+    except:
+        return None
+
 def get_domain(url):
     parsed = urlparse(url)
-    domain = parsed.netloc
-    return domain.replace("www.", "")
+    domain = parsed.netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain
 
 def entropy(s):
-    s = str(s)
     prob = [float(s.count(c)) / len(s) for c in set(s)]
     return -sum([p * math.log2(p) for p in prob])
 
@@ -52,24 +61,19 @@ def is_random_string(url):
     letters = re.sub(r'[^a-z]', '', url.lower())
     if len(letters) == 0:
         return 0
-    unique_ratio = len(set(letters)) / len(letters)
-    return 1 if unique_ratio > 0.6 else 0
+    return 1 if len(set(letters)) / len(letters) > 0.6 else 0
 
 def is_safe(domain):
-    return domain in SAFE_DOMAINS
+    return any(domain == d or domain.endswith("." + d) for d in SAFE_DOMAINS)
 
 def is_scam(domain):
     return domain in SCAM_DOMAINS
 
 # -------- FEATURES --------
+
 suspicious_words = ["login", "verify", "account", "bank", "secure", "update", "free", "win"]
 
 def extract_features(url):
-    url = str(url).lower()
-
-    if not url.startswith("http"):
-        url = "http://" + url
-
     keyword_flag = 1 if any(word in url for word in suspicious_words) else 0
     random_flag = is_random_string(url)
     entropy_value = entropy(url)
@@ -91,11 +95,10 @@ def extract_features(url):
     ]]
 
 # -------- VIRUSTOTAL --------
+
 def check_url_virustotal(url):
     try:
-        url_bytes = url.encode("utf-8")
-        url_id = base64.urlsafe_b64encode(url_bytes).decode("utf-8").strip("=")
-
+        url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
         api_url = f"https://www.virustotal.com/api/v3/urls/{url_id}"
         headers = {"x-apikey": API_KEY}
 
@@ -118,91 +121,79 @@ def check_url_virustotal(url):
         malicious = stats.get("malicious", 0)
         suspicious = stats.get("suspicious", 0)
 
-        risk = malicious * 20 + suspicious * 10
+        # 🔥 FIX: proper classification
+        if malicious == 0 and suspicious == 0:
+            return {
+                "prediction": "Genuine",
+                "riskScore": 5,
+                "source": "VirusTotal"
+            }
 
-        return {
-            "malicious": malicious,
-            "suspicious": suspicious,
-            "risk": min(risk, 100)
-        }
+        if malicious > 0:
+            return {
+                "prediction": "Scam",
+                "riskScore": min(100, malicious * 20),
+                "source": "VirusTotal"
+            }
+
+        if suspicious > 0:
+            return {
+                "prediction": "Suspicious",
+                "riskScore": min(100, suspicious * 10),
+                "source": "VirusTotal"
+            }
 
     except:
         return None
 
 # -------- ROUTE --------
+
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json()
-        url = data.get("url", "").lower()
+        url = clean_url(data.get("url", ""))
 
         if not url:
-            return jsonify({"error": "URL required"}), 400
+            return jsonify({"prediction": "Invalid", "riskScore": 0})
 
         domain = get_domain(url)
 
-        # 🔥 CACHE
         if url in cache:
             return jsonify(cache[url])
 
-        # ✅ WHITELIST
         if is_safe(domain):
-            result = {
-                "prediction": "Genuine",
-                "riskScore": 0,
-                "source": "Whitelist (Trusted Domain)"
-            }
+            result = {"prediction": "Genuine", "riskScore": 0, "source": "Whitelist"}
             cache[url] = result
             return jsonify(result)
 
-        # ❌ BLACKLIST
         if is_scam(domain):
-            result = {
-                "prediction": "Scam",
-                "riskScore": 100,
-                "source": "Blacklist (Known Scam)"
-            }
+            result = {"prediction": "Scam", "riskScore": 100, "source": "Blacklist"}
             cache[url] = result
             return jsonify(result)
 
-        # 🌐 VIRUSTOTAL
         vt = check_url_virustotal(url)
 
         if vt:
             if vt.get("status") == "Analyzing":
-                return jsonify({
-                    "prediction": "Analyzing",
-                    "riskScore": 0,
-                    "source": "VirusTotal scanning"
-                })
+                return jsonify({"prediction": "Analyzing", "riskScore": 0})
 
-            if vt["malicious"] > 0:
-                result = {
-                    "prediction": "Scam",
-                    "riskScore": vt["risk"],
-                    "source": "VirusTotal"
-                }
-                cache[url] = result
-                return jsonify(result)
+            cache[url] = vt
+            return jsonify(vt)
 
-        # 🤖 ML FALLBACK
+        # ML fallback
         features = extract_features(url)
         prob = model.predict_proba(features)[0][1]
         risk = int(prob * 100)
 
-        if risk > 80:
+        if risk > 75:
             prediction = "Scam"
-        elif risk < 20:
+        elif risk < 25:
             prediction = "Genuine"
         else:
             prediction = "Suspicious"
 
-        result = {
-            "prediction": prediction,
-            "riskScore": risk,
-            "source": "ML Model"
-        }
-
+        result = {"prediction": prediction, "riskScore": risk, "source": "ML Model"}
         cache[url] = result
         return jsonify(result)
 
@@ -211,5 +202,6 @@ def predict():
         return jsonify({"prediction": "Error", "riskScore": 0})
 
 # -------- RUN --------
+
 if __name__ == "__main__":
     app.run(port=8000, debug=True)
