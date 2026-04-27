@@ -272,11 +272,32 @@ function App() {
               <span>{item.url}</span>
 
               <div className="flex gap-2">
-                <span>{item.prediction}</span>
+              <span
+                  className={
+                     item.prediction === "Scam"
+                        ? "text-red-400"
+                        : item.prediction === "Suspicious"
+                        ? "text-yellow-400"
+                        : item.prediction === "Genuine"
+                        ? "text-green-400"
+                        : "text-gray-400"
+                  }
+              >
+              {item.prediction}
+              </span>
 
-                <button onClick={() => deleteItem(i)}>
-                  ❌
-                </button>
+              {/* ICON */}
+              <span>
+              {item.prediction === "Scam" ? "❌" :
+              item.prediction === "Suspicious" ? "⚠️" :
+              item.prediction === "Genuine" ? "✔️" :
+              "⚠️"}
+              </span>
+
+              {/* DELETE BUTTON */}
+              <button onClick={() => deleteItem(i)} className="ml-2">
+               🗑️
+               </button>
               </div>
             </div>
           ))}
