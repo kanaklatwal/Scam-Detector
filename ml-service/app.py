@@ -190,26 +190,26 @@ def predict():
         entropy_value = features[0][-1]
         random_flag = features[0][-2]
 
-        # HEURISTIC
-        if (
-            entropy_value > 3.8 or
-            random_flag == 1 or
-            len(domain) > 25
-        ):
-            reasons.append("Random/complex URL detected")
+        risk_boost = 0
 
-            result = {
-                "prediction": "Suspicious",
-                "riskScore": 70,
-                "source": "Heuristic",
-                "reasons": reasons
-            }
-            cache[url] = result
-            return jsonify(result)
+        if entropy_value > 3.8:
+           risk_boost += 20
+           reasons.append("High entropy URL")
+
+        if random_flag == 1:
+            risk_boost += 20
+            reasons.append("Random-looking URL")
+
+        if len(domain) > 25:
+            risk_boost += 15
+            reasons.append("Very long domain")
 
         # ML MODEL
         prob = model.predict_proba(features)[0][1]
         risk = int(prob * 100)
+        
+        risk += risk_boost
+        risk = min(risk, 100)
 
         if risk > 75:
             prediction = "Scam"
@@ -219,13 +219,13 @@ def predict():
         else:
             prediction = "Suspicious"
             reasons.append("Medium ML risk score")
-            
+
         if len(reasons) == 0:
              reasons.append("No obvious issues detected")
         result = {
             "prediction": prediction,
             "riskScore": risk,
-            "source": "ML Model",
+            "source": "Hybrid AI (ML + Heuristic)",
             "reasons": reasons
         }
 
