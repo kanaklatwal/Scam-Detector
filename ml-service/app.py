@@ -219,7 +219,9 @@ def predict():
         else:
             prediction = "Suspicious"
             reasons.append("Medium ML risk score")
-
+            
+        if len(reasons) == 0:
+             reasons.append("No obvious issues detected")
         result = {
             "prediction": prediction,
             "riskScore": risk,
