@@ -56,12 +56,11 @@ def entropy(s):
     prob = [float(s.count(c)) / len(s) for c in set(s)]
     return -sum([p * math.log2(p) for p in prob])
 
-def is_random_string(url):
+def random_score(url):
     letters = re.sub(r'[^a-z]', '', url.lower())
     if len(letters) < 5:
         return 0
-    unique_ratio = len(set(letters)) / len(letters)
-    return 1 if unique_ratio > 0.5 else 0
+    return len(set(letters)) / len(letters)
 
 def is_safe(domain):
     return any(domain == d or domain.endswith("." + d) for d in SAFE_DOMAINS)
@@ -80,24 +79,30 @@ def is_gibberish(text):
 suspicious_words = ["login", "verify", "account", "bank", "secure", "update", "free", "win"]
 
 def extract_features(url):
-    keyword_flag = 1 if any(word in url for word in suspicious_words) else 0
-    random_flag = is_random_string(url)
-    entropy_value = entropy(url)
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower()
 
+    keyword_flag = 1 if any(word in url.lower() for word in suspicious_words) else 0
+    entropy_value = entropy(url)
+    random_value = random_score(url)
     return [[
         len(url),
         url.count("."),
         url.count("-"),
         url.count("/"),
         url.count("@"),
-        int("https" in url),
-        int("http" in url),
-        int("www" in url),
-        int(".com" in url),
+        int(url.startswith("https")),
         sum(c.isdigit() for c in url),
-        keyword_flag,
-        random_flag,
-        entropy_value
+
+        len(domain),
+        domain.count("."),  
+        int(re.match(r"^\d+\.\d+\.\d+\.\d+$", domain) is not None),  # IP based URL
+        int("login" in url.lower()),
+        int("secure" in url.lower()),
+        int("verify" in url.lower()),
+
+        entropy_value,
+        random_value
     ]]
 
 # -------- VIRUSTOTAL --------
@@ -173,12 +178,6 @@ def predict():
         if url in cache:
             return jsonify(cache[url])
 
-        # WHITELIST
-        if is_safe(domain):
-            result = {"prediction": "Genuine", "riskScore": 0, "source": "Whitelist", "reasons": ["Trusted domain"]}
-            cache[url] = result
-            return jsonify(result)
-
         # BLACKLIST
         if is_scam(domain):
             result = {"prediction": "Scam", "riskScore": 100, "source": "Blacklist", "reasons": ["Known scam domain"]}
@@ -187,22 +186,25 @@ def predict():
 
         # FEATURES
         features = extract_features(url)
-        entropy_value = features[0][-1]
-        random_flag = features[0][-2]
+        entropy_value = features[0][-2]
+        random_value = features[0][-1]
 
         risk_boost = 0
 
-        if entropy_value > 3.8:
-           risk_boost += 20
+        if entropy_value > 4.2:
+           risk_boost += 15
            reasons.append("High entropy URL")
 
-        if random_flag == 1:
-            risk_boost += 20
-            reasons.append("Random-looking URL")
-
-        if len(domain) > 25:
-            risk_boost += 15
+        if len(domain) > 30:
+            risk_boost += 10
             reasons.append("Very long domain")
+        
+        if random_value > 0.6:
+            risk_boost += 10
+            reasons.append("Random-looking domain")
+        if "login" in url.lower():
+             risk_boost += 10
+             reasons.append("Login keyword detected")
 
         # ML MODEL
         prob = model.predict_proba(features)[0][1]
@@ -211,10 +213,10 @@ def predict():
         risk += risk_boost
         risk = min(risk, 100)
 
-        if risk > 75:
+        if risk > 70:
             prediction = "Scam"
             reasons.append("High ML risk score")
-        elif risk < 25:
+        elif risk < 30:
             prediction = "Genuine"
         else:
             prediction = "Suspicious"

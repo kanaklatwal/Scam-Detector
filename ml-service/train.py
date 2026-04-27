@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from urllib.parse import urlparse 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
@@ -32,13 +33,6 @@ def entropy(s):
     prob = [float(s.count(c)) / len(s) for c in set(s)]
     return -sum([p * math.log2(p) for p in prob])
 
-def is_random_string(s):
-    letters = re.sub(r'[^a-z]', '', s)
-    if len(letters) == 0:
-        return 0
-    unique_ratio = len(set(letters)) / len(letters)
-    return 1 if unique_ratio > 0.6 else 0
-
 # =========================
 # FEATURE EXTRACTION
 # =========================
@@ -49,10 +43,9 @@ def extract_features(url):
 
     if not url.startswith("http"):
         url = "http://" + url
-
-    keyword_flag = 1 if any(word in url for word in suspicious_words) else 0
-    random_flag = is_random_string(url)
-    entropy_value = entropy(url)
+    
+    parsed = urlparse(url)
+    domain = parsed.netloc
 
     return [
         len(url),
@@ -60,13 +53,17 @@ def extract_features(url):
         url.count("-"),
         url.count("/"),
         url.count("@"),
-        int("https" in url),
-        int("www" in url),
-        int(".com" in url),
+        int(url.startswith("https")),
         sum(c.isdigit() for c in url),
-        keyword_flag,
-        random_flag,
-        entropy_value
+
+        len(domain),
+        domain.count("."),  # subdomains
+        int(re.match(r"^\d+\.\d+\.\d+\.\d+$", domain) is not None),
+        int("login" in url),
+        int("secure" in url),
+        int("verify" in url),
+
+        entropy(url)
     ]
 
 # =========================
@@ -117,11 +114,13 @@ feature_names = [
     "slashes",
     "ats",
     "https",
-    "www",
-    "com",
     "digits",
-    "keywords",
-    "random",
+    "domain_length",
+    "subdomains",
+    "ip_flag",
+    "login",
+    "secure",
+    "verify",
     "entropy"
 ]
 
