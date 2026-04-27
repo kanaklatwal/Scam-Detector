@@ -73,13 +73,12 @@ function App() {
       const res = await axios.post(
         "https://scam-detector-g7oe.onrender.com/check-url",
         {
-          url: body   
+          url: url   
         }
       );
     
       setResult(res.data);
-      saveEmailHistory(res.data);
-    
+      saveUrlHistory(res.data);
     } catch {
       setResult({
         prediction: "Error",
@@ -147,7 +146,7 @@ function App() {
         ? "text-red-400"
         : type === "Suspicious"
         ? "text-yellow-400"
-        : type === "Genuine"
+        : type === "Genuine" || type === "safe"
         ? "text-green-400"
         : "text-gray-400";
     } else {
