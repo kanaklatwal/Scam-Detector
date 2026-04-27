@@ -16,15 +16,14 @@ load_dotenv()
 API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 
 model = joblib.load("model.pkl")
+email_model = joblib.load("email_model.pkl")
+vectorizer = joblib.load("vectorizer.pkl")
 
 cache = {}
 
 SAFE_DOMAINS = [
-    "google.com",
-    "facebook.com",
-    "youtube.com",
-    "amazon.com",
-    "instagram.com"
+    "google.com", "facebook.com", "youtube.com",
+    "amazon.com", "instagram.com"
 ]
 
 SCAM_DOMAINS = [
@@ -70,6 +69,12 @@ def is_safe(domain):
 def is_scam(domain):
     return domain in SCAM_DOMAINS
 
+def is_gibberish(text):
+    letters = re.sub(r'[^a-z]', '', text.lower())
+    if len(letters) < 5:
+        return True
+    unique_ratio = len(set(letters)) / len(letters)
+    return unique_ratio > 0.7
 # -------- FEATURES --------
 
 suspicious_words = ["login", "verify", "account", "bank", "secure", "update", "free", "win"]
@@ -141,34 +146,42 @@ def check_url_virustotal(url):
 def home():
     return "🚀 Scam Detection API is running"
 
-
+# ===================== URL =====================
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json()
         url = clean_url(data.get("url", ""))
 
-        print("Incoming URL:", url)
-
         if not url:
             return jsonify({"prediction": "Invalid", "riskScore": 90})
 
         domain = get_domain(url)
 
+        reasons = []
+
+        if "@" in url:
+            reasons.append("Contains @ symbol (phishing trick)")
+
+        if "-" in domain:
+            reasons.append("Suspicious domain format")
+
+        if len(url) > 75:
+            reasons.append("URL is too long")
+
         # CACHE
         if url in cache:
-            print("Cache hit")
             return jsonify(cache[url])
 
         # WHITELIST
         if is_safe(domain):
-            result = {"prediction": "Genuine", "riskScore": 0, "source": "Whitelist"}
+            result = {"prediction": "Genuine", "riskScore": 0, "source": "Whitelist", "reasons": ["Trusted domain"]}
             cache[url] = result
             return jsonify(result)
 
         # BLACKLIST
         if is_scam(domain):
-            result = {"prediction": "Scam", "riskScore": 100, "source": "Blacklist"}
+            result = {"prediction": "Scam", "riskScore": 100, "source": "Blacklist", "reasons": ["Known scam domain"]}
             cache[url] = result
             return jsonify(result)
 
@@ -181,44 +194,18 @@ def predict():
         if (
             entropy_value > 3.8 or
             random_flag == 1 or
-            len(domain) > 25 or
-            not re.search(r"\.[a-z]{2,}$", domain)
+            len(domain) > 25
         ):
+            reasons.append("Random/complex URL detected")
+
             result = {
                 "prediction": "Suspicious",
                 "riskScore": 70,
-                "source": "Heuristic"
+                "source": "Heuristic",
+                "reasons": reasons
             }
             cache[url] = result
             return jsonify(result)
-
-        # VIRUSTOTAL
-        vt = check_url_virustotal(url)
-
-        if vt:
-            if vt.get("status") == "Analyzing":
-                print("VT analyzing → fallback ML")
-
-                prob = model.predict_proba(features)[0][1]
-                risk = int(prob * 100)
-
-                prediction = (
-                    "Scam" if risk > 75 else
-                    "Genuine" if risk < 25 else
-                    "Suspicious"
-                )
-
-                result = {
-                    "prediction": prediction,
-                    "riskScore": risk,
-                    "source": "ML (fallback)"
-                }
-
-                cache[url] = result
-                return jsonify(result)
-
-            cache[url] = vt
-            return jsonify(vt)
 
         # ML MODEL
         prob = model.predict_proba(features)[0][1]
@@ -226,30 +213,96 @@ def predict():
 
         if risk > 75:
             prediction = "Scam"
+            reasons.append("High ML risk score")
         elif risk < 25:
             prediction = "Genuine"
         else:
             prediction = "Suspicious"
+            reasons.append("Medium ML risk score")
 
         result = {
             "prediction": prediction,
             "riskScore": risk,
-            "source": "ML Model"
+            "source": "ML Model",
+            "reasons": reasons
         }
 
         cache[url] = result
         return jsonify(result)
 
     except Exception as e:
-        print("Error:", e)
         return jsonify({
             "prediction": "Error",
             "riskScore": 0,
             "message": str(e)
         })
 
+# ===================== EMAIL =====================
+@app.route("/email", methods=["POST"])
+def check_email():
+    try:
+        data = request.get_json()
+        subject = data.get("subject", "")
+        body = data.get("body", "")
+
+        text = subject + " " + body
+        text_lower = text.lower()
+
+        reasons = []
+
+        # 🔥 KEYWORD DETECTION
+        if "free" in text_lower:
+            reasons.append("Contains spam keyword: free")
+        if "win" in text_lower:
+            reasons.append("Contains spam keyword: win")
+        if "click" in text_lower:
+            reasons.append("Suspicious call-to-action")
+
+        # 🔥 ML BASE SCORE
+        text_vec = vectorizer.transform([text])
+        prob = email_model.predict_proba(text_vec)[0][1]
+        risk = int(prob * 100)
+
+        # 🔥 GIBBERISH BOOST
+        if is_gibberish(text):
+            risk += 25
+            reasons.append("Random/gibberish text detected")
+
+        # 🔥 KEYWORD BOOST
+        if "free" in text_lower:
+            risk += 20
+        if "win" in text_lower:
+            risk += 20
+        if "click" in text_lower:
+            risk += 15
+
+        # 🔥 LIMIT
+        risk = min(risk, 100)
+
+        # 🔥 FINAL DECISION
+        if risk > 75:
+            prediction = "Scam"
+            reasons.append("High risk score")
+        elif risk < 25:
+            prediction = "Genuine"
+        else:
+            prediction = "Suspicious"
+            reasons.append("Medium risk score")
+
+        return jsonify({
+            "prediction": prediction,
+            "riskScore": risk,
+            "source": "Email Hybrid AI",
+            "reasons": reasons
+        })
+
+    except Exception as e:
+        return jsonify({
+            "prediction": "Error",
+            "riskScore": 0,
+            "message": str(e)
+        })
 
 # -------- RUN --------
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
