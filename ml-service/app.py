@@ -57,7 +57,6 @@ def entropy(s):
     prob = [float(s.count(c)) / len(s) for c in set(s)]
     return -sum([p * math.log2(p) for p in prob])
 
-# 🔥 FIXED RANDOM CHECK
 def is_random_string(url):
     letters = re.sub(r'[^a-z]', '', url.lower())
     if len(letters) < 5:
@@ -132,7 +131,8 @@ def check_url_virustotal(url):
         if suspicious > 0:
             return {"prediction": "Suspicious", "riskScore": min(100, suspicious * 10), "source": "VirusTotal"}
 
-    except:
+    except Exception as e:
+        print("VT Error:", e)
         return None
 
 # -------- ROUTES --------
@@ -148,6 +148,8 @@ def predict():
         data = request.get_json()
         url = clean_url(data.get("url", ""))
 
+        print("Incoming URL:", url)
+
         if not url:
             return jsonify({"prediction": "Invalid", "riskScore": 90})
 
@@ -155,6 +157,7 @@ def predict():
 
         # CACHE
         if url in cache:
+            print("Cache hit")
             return jsonify(cache[url])
 
         # WHITELIST
@@ -169,12 +172,12 @@ def predict():
             cache[url] = result
             return jsonify(result)
 
-        # 🔥 FEATURE EXTRACTION FIRST
+        # FEATURES
         features = extract_features(url)
         entropy_value = features[0][-1]
         random_flag = features[0][-2]
 
-        # 🔥 STRONG HEURISTIC (MAIN FIX)
+        # HEURISTIC
         if (
             entropy_value > 3.8 or
             random_flag == 1 or
@@ -189,12 +192,30 @@ def predict():
             cache[url] = result
             return jsonify(result)
 
-        # VIRUSTOTAL AFTER HEURISTIC
+        # VIRUSTOTAL
         vt = check_url_virustotal(url)
 
         if vt:
             if vt.get("status") == "Analyzing":
-                return jsonify({"prediction": "Analyzing", "riskScore": 0})
+                print("VT analyzing → fallback ML")
+
+                prob = model.predict_proba(features)[0][1]
+                risk = int(prob * 100)
+
+                prediction = (
+                    "Scam" if risk > 75 else
+                    "Genuine" if risk < 25 else
+                    "Suspicious"
+                )
+
+                result = {
+                    "prediction": prediction,
+                    "riskScore": risk,
+                    "source": "ML (fallback)"
+                }
+
+                cache[url] = result
+                return jsonify(result)
 
             cache[url] = vt
             return jsonify(vt)
@@ -221,10 +242,14 @@ def predict():
 
     except Exception as e:
         print("Error:", e)
-        return jsonify({"prediction": "Error", "riskScore": 0})
+        return jsonify({
+            "prediction": "Error",
+            "riskScore": 0,
+            "message": str(e)
+        })
 
 
 # -------- RUN --------
 
 if __name__ == "__main__":
-    app.run(port=8000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=True)
