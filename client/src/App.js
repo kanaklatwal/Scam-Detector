@@ -283,6 +283,18 @@ function App() {
               {getIcon(result.prediction)} {result.prediction}
             </h2>
             <p className="mt-2 text-gray-400">Risk Score: {result.riskScore}%</p>
+            {result.reasons && result.reasons.length > 0 && (
+               <div className="mt-4 text-left">
+                 <h3 className="text-sm font-semibold text-gray-300 mb-2">
+                    Reasons:
+                 </h3>
+                 <ul className="list-disc pl-5 text-gray-400 text-sm space-y-1">
+                    {result.reasons.map((reason, index) => (
+                       <li key={index}>{reason}</li>
+                    ))}
+                 </ul>
+               </div>
+             )}
           </div>
         </div>
       )}
