@@ -70,9 +70,16 @@ function App() {
     setResult(null);
 
     try {
-      const res = await axios.post("http://localhost:8000/predict", { url });
+      const res = await axios.post(
+        "https://scam-detector-g7oe.onrender.com/check-url",
+        {
+          url: body   
+        }
+      );
+    
       setResult(res.data);
-      saveUrlHistory(res.data);
+      saveEmailHistory(res.data);
+    
     } catch {
       setResult({
         prediction: "Error",
@@ -92,7 +99,7 @@ function App() {
     setResult(null);
 
     try {
-      const res = await axios.post("http://localhost:8000/email", {
+      const res = await axios.post("https://scam-detector-g7oe.onrender.com/check-url,t6", {
         subject,
         body,
       });
