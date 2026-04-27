@@ -17,10 +17,10 @@ function App() {
 
   const toggleTheme = () => setDark(!dark);
 
-  // 🔥 RESET WHEN MODE CHANGES
+  // RESET
   useEffect(() => {
     setResult(null);
-
+    setLoading(false);
     if (mode === "url") {
       setSubject("");
       setBody("");
@@ -35,16 +35,14 @@ function App() {
     setEmailHistory(JSON.parse(localStorage.getItem("emailHistory")) || []);
   }, []);
 
-  // SAVE URL HISTORY
+  // SAVE HISTORY
   const saveUrlHistory = useCallback((data) => {
     if (data.prediction === "Analyzing") return;
-
     const updated = [{ ...data, url }, ...urlHistory].slice(0, 5);
     setUrlHistory(updated);
     localStorage.setItem("urlHistory", JSON.stringify(updated));
   }, [urlHistory, url]);
 
-  // SAVE EMAIL HISTORY
   const saveEmailHistory = useCallback((data) => {
     const updated = [
       { ...data, url: subject || body.slice(0, 20) },
@@ -55,7 +53,7 @@ function App() {
     localStorage.setItem("emailHistory", JSON.stringify(updated));
   }, [emailHistory, subject, body]);
 
-  // URL CHECK
+  // API
   const checkWebsite = useCallback(async () => {
     if (!url.trim()) return alert("Enter URL");
 
@@ -67,13 +65,12 @@ function App() {
       setResult(res.data);
       saveUrlHistory(res.data);
     } catch {
-      alert("Backend not connected");
+      setResult({ prediction: "Error", riskScore: 0, reasons: ["Backend not connected"] });
     }
 
     setLoading(false);
   }, [url, saveUrlHistory]);
 
-  // EMAIL CHECK
   const checkEmail = async () => {
     if (!subject.trim() && !body.trim()) return alert("Enter email content");
 
@@ -81,14 +78,11 @@ function App() {
     setResult(null);
 
     try {
-      const res = await axios.post("http://localhost:8000/email", {
-        subject,
-        body,
-      });
+      const res = await axios.post("http://localhost:8000/email", { subject, body });
       setResult(res.data);
       saveEmailHistory(res.data);
     } catch {
-      alert("Backend not connected");
+      setResult({ prediction: "Error", riskScore: 0, reasons: ["Backend not connected"] });
     }
 
     setLoading(false);
@@ -107,7 +101,6 @@ function App() {
     }
   };
 
-  // CLEAR ALL
   const clearAll = () => {
     if (mode === "url") {
       setUrlHistory([]);
@@ -120,16 +113,27 @@ function App() {
 
   const currentHistory = mode === "url" ? urlHistory : emailHistory;
 
-  const isScam = result?.prediction === "Scam";
-  const isSuspicious = result?.prediction === "Suspicious";
+  // COLORS + ICONS
+  const getColor = (type) =>
+    type === "Scam" ? "text-red-400" :
+    type === "Suspicious" ? "text-yellow-400" :
+    type === "Genuine" ? "text-green-400" :
+    type === "Error" ? "text-red-500" :
+    "text-gray-400";
+
+  const getIcon = (type) =>
+    type === "Scam" ? "❌" :
+    type === "Suspicious" ? "⚠️" :
+    type === "Genuine" ? "✅" :
+    type === "Error" ? "🚫" :
+    "⚠️";
 
   return (
-    <div className={`${dark ? "bg-[#0f172a] text-white" : "bg-gray-100 text-black"} min-h-screen`}>
+    <div className={`${dark ? "bg-[#0f172a] text-white" : "bg-purple-100 text-black"} min-h-screen`}>
 
       {/* NAV */}
       <div className="flex justify-between items-center px-8 py-5 border-b border-white/10">
         <h1 className="text-xl font-semibold">🚨 ScamShield AI</h1>
-
         <button onClick={toggleTheme} className="bg-white/10 px-4 py-2 rounded-full">
           {dark ? "🌙" : "☀️"}
         </button>
@@ -141,116 +145,68 @@ function App() {
           Detect Scams <span className="text-blue-400">Instantly</span>
         </h1>
 
-        <p className="text-gray-400 mb-6">
-          URL + Email Scam Detection System
-        </p>
-
-        {/* MODE SWITCH */}
+        {/* MODE */}
         <div className="flex justify-center gap-4 mb-6">
-          <button
-            onClick={() => setMode("url")}
-            className={`px-4 py-2 rounded-full ${
-              mode === "url" ? "bg-blue-500" : "bg-white/10"
-            }`}
-          >
+          <button onClick={() => setMode("url")} className={`px-4 py-2 rounded-full ${mode === "url" ? "bg-blue-500" : "bg-white/10"}`}>
             URL Scanner
           </button>
-
-          <button
-            onClick={() => setMode("email")}
-            className={`px-4 py-2 rounded-full ${
-              mode === "email" ? "bg-blue-500" : "bg-white/10"
-            }`}
-          >
+          <button onClick={() => setMode("email")} className={`px-4 py-2 rounded-full ${mode === "email" ? "bg-blue-500" : "bg-white/10"}`}>
             Email Scanner
           </button>
         </div>
 
-        {/* URL INPUT */}
-        {mode === "url" && (
+        {/* INPUT */}
+        {mode === "url" ? (
           <div className="flex justify-center">
-            <div className="flex bg-white/10 rounded-2xl p-2 w-[500px] max-w-full">
+            <div className="flex bg-white/10 rounded-2xl p-2 w-[500px]">
               <input
                 value={url}
                 onChange={(e) => {
                   setUrl(e.target.value);
                   if (!e.target.value.trim()) setResult(null);
                 }}
-                placeholder="🔍 Paste suspicious URL..."
-                className="flex-1 bg-transparent outline-none px-4 py-3"
+                className="flex-1 bg-transparent outline-none px-4"
+                placeholder="Paste URL..."
               />
-
-              <button onClick={checkWebsite} className="bg-blue-500 px-6 py-3 rounded-xl">
-                {loading ? "..." : "Scan"}
+              <button onClick={checkWebsite} className="bg-blue-500 px-6 py-2 rounded-xl">
+                Scan
               </button>
             </div>
           </div>
-        )}
-
-        {/* EMAIL INPUT */}
-        {mode === "email" && (
+        ) : (
           <div className="flex flex-col items-center gap-3">
-            <input
-              value={subject}
-              placeholder="Subject..."
-              className="w-[500px] p-3 rounded-xl bg-white/10"
-              onChange={(e) => {
-                const val = e.target.value;
-                setSubject(val);
-                if (!val.trim() && !body.trim()) setResult(null);
-              }}
-            />
-
-            <textarea
-              value={body}
-              placeholder="Paste email content..."
-              className="w-[500px] p-3 rounded-xl bg-white/10"
-              rows={4}
-              onChange={(e) => {
-                const val = e.target.value;
-                setBody(val);
-                if (!val.trim() && !subject.trim()) setResult(null);
-              }}
-            />
-
-            <button onClick={checkEmail} className="bg-blue-500 px-6 py-3 rounded-xl">
-              {loading ? "..." : "Check Email"}
-            </button>
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} className="w-[500px] p-3 rounded-xl bg-white/10" placeholder="Subject..." />
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} className="w-[500px] p-3 rounded-xl bg-white/10" rows={4} placeholder="Email content..." />
+            <button onClick={checkEmail} className="bg-blue-500 px-6 py-2 rounded-xl">Check Email</button>
           </div>
         )}
       </div>
 
       {/* LOADING */}
       {loading && (
-        <div className="flex justify-center mt-10">
-          <div className="w-10 h-10 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+        <div className="text-center mt-10">
+          <p>Loading...</p>
         </div>
       )}
 
       {/* RESULT */}
       {result && !loading && (
         <div className="text-center mt-12">
-          <h2 className={`text-2xl font-semibold ${
-            isScam ? "text-red-400"
-            : isSuspicious ? "text-yellow-400"
-            : "text-green-400"
-          }`}>
-            {result.prediction}
+          <h2 className={`text-2xl ${getColor(result.prediction)}`}>
+            {getIcon(result.prediction)} {result.prediction}
           </h2>
 
           <p className="text-gray-400">
             Risk Score: {result.riskScore}%
           </p>
 
-          {result.reasons && result.reasons.length > 0 && (
-            <div className="mt-4 text-yellow-300 text-sm">
-              <p>⚠️ Reasons:</p>
-              <ul>
-                {result.reasons.map((r, i) => (
-                  <li key={i}>- {r}</li>
-                ))}
-              </ul>
-            </div>
+          {/* REASONS */}
+          {result.reasons && (
+            <ul className="mt-4 text-yellow-300 text-sm">
+              {result.reasons.map((r, i) => (
+                <li key={i}>- {r}</li>
+              ))}
+            </ul>
           )}
         </div>
       )}
@@ -258,55 +214,32 @@ function App() {
       {/* HISTORY */}
       {currentHistory.length > 0 && (
         <div className="mt-20 px-10 max-w-3xl mx-auto">
-
-          <div className="flex justify-between mb-6">
+          <div className="flex justify-between mb-4">
             <h3>{mode === "url" ? "URL History" : "Email History"}</h3>
-
-            <button onClick={clearAll} className="text-red-400">
-              Clear All
-            </button>
+            <button onClick={clearAll} className="text-red-400">Clear</button>
           </div>
 
           {currentHistory.map((item, i) => (
-            <div key={i} className="flex justify-between bg-white/5 p-4 mb-2 rounded">
+            <div key={i} className="flex justify-between items-center p-3 bg-white/5 rounded mb-2">
               <span>{item.url}</span>
 
-              <div className="flex gap-2">
-              <span
-                  className={
-                     item.prediction === "Scam"
-                        ? "text-red-400"
-                        : item.prediction === "Suspicious"
-                        ? "text-yellow-400"
-                        : item.prediction === "Genuine"
-                        ? "text-green-400"
-                        : "text-gray-400"
-                  }
-              >
-              {item.prediction}
-              </span>
+              <div className="flex items-center gap-3">
+                <span>{getIcon(item.prediction)}</span>
+                <span className={getColor(item.prediction)}>
+                  {item.prediction}
+                </span>
 
-              {/* ICON */}
-              <span>
-              {item.prediction === "Scam" ? "❌" :
-              item.prediction === "Suspicious" ? "⚠️" :
-              item.prediction === "Genuine" ? "✔️" :
-              "⚠️"}
-              </span>
-
-              {/* DELETE BUTTON */}
-              <button onClick={() => deleteItem(i)} className="ml-2">
-               🗑️
-               </button>
+                <button
+                  onClick={() => deleteItem(i)}
+                  className="text-red-400 hover:text-red-600"
+                >
+                  🗑️
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
-
-      <div className="text-center mt-20 pb-10 text-sm text-gray-500">
-        Built with ❤️ using AI + ML
-      </div>
     </div>
   );
 }
