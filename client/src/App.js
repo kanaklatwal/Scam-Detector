@@ -17,6 +17,24 @@ function App() {
 
   const toggleTheme = () => setDark(!dark);
 
+  // 🔥 RESET WHEN MODE CHANGES
+  useEffect(() => {
+    setResult(null);
+
+    if (mode === "url") {
+      setSubject("");
+      setBody("");
+    } else {
+      setUrl("");
+    }
+  }, [mode]);
+
+  // LOAD HISTORY
+  useEffect(() => {
+    setUrlHistory(JSON.parse(localStorage.getItem("urlHistory")) || []);
+    setEmailHistory(JSON.parse(localStorage.getItem("emailHistory")) || []);
+  }, []);
+
   // SAVE URL HISTORY
   const saveUrlHistory = useCallback((data) => {
     if (data.prediction === "Analyzing") return;
@@ -29,13 +47,13 @@ function App() {
   // SAVE EMAIL HISTORY
   const saveEmailHistory = useCallback((data) => {
     const updated = [
-      { ...data, url: subject || "Email Scan" },
+      { ...data, url: subject || body.slice(0, 20) },
       ...emailHistory,
     ].slice(0, 5);
 
     setEmailHistory(updated);
     localStorage.setItem("emailHistory", JSON.stringify(updated));
-  }, [emailHistory, subject]);
+  }, [emailHistory, subject, body]);
 
   // URL CHECK
   const checkWebsite = useCallback(async () => {
@@ -57,7 +75,7 @@ function App() {
 
   // EMAIL CHECK
   const checkEmail = async () => {
-    if (!subject && !body) return alert("Enter email content");
+    if (!subject.trim() && !body.trim()) return alert("Enter email content");
 
     setLoading(true);
     setResult(null);
@@ -76,12 +94,6 @@ function App() {
     setLoading(false);
   };
 
-  // LOAD HISTORY
-  useEffect(() => {
-    setUrlHistory(JSON.parse(localStorage.getItem("urlHistory")) || []);
-    setEmailHistory(JSON.parse(localStorage.getItem("emailHistory")) || []);
-  }, []);
-
   // DELETE
   const deleteItem = (index) => {
     if (mode === "url") {
@@ -95,7 +107,7 @@ function App() {
     }
   };
 
-  // CLEAR
+  // CLEAR ALL
   const clearAll = () => {
     if (mode === "url") {
       setUrlHistory([]);
@@ -133,7 +145,7 @@ function App() {
           URL + Email Scam Detection System
         </p>
 
-        {/* TOGGLE */}
+        {/* MODE SWITCH */}
         <div className="flex justify-center gap-4 mb-6">
           <button
             onClick={() => setMode("url")}
@@ -160,7 +172,10 @@ function App() {
             <div className="flex bg-white/10 rounded-2xl p-2 w-[500px] max-w-full">
               <input
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  if (!e.target.value.trim()) setResult(null);
+                }}
                 placeholder="🔍 Paste suspicious URL..."
                 className="flex-1 bg-transparent outline-none px-4 py-3"
               />
@@ -176,16 +191,26 @@ function App() {
         {mode === "email" && (
           <div className="flex flex-col items-center gap-3">
             <input
+              value={subject}
               placeholder="Subject..."
               className="w-[500px] p-3 rounded-xl bg-white/10"
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSubject(val);
+                if (!val.trim() && !body.trim()) setResult(null);
+              }}
             />
 
             <textarea
+              value={body}
               placeholder="Paste email content..."
               className="w-[500px] p-3 rounded-xl bg-white/10"
               rows={4}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setBody(val);
+                if (!val.trim() && !subject.trim()) setResult(null);
+              }}
             />
 
             <button onClick={checkEmail} className="bg-blue-500 px-6 py-3 rounded-xl">
@@ -195,13 +220,14 @@ function App() {
         )}
       </div>
 
-      {/* RESULT */}
+      {/* LOADING */}
       {loading && (
         <div className="flex justify-center mt-10">
           <div className="w-10 h-10 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
         </div>
       )}
 
+      {/* RESULT */}
       {result && !loading && (
         <div className="text-center mt-12">
           <h2 className={`text-2xl font-semibold ${
@@ -216,7 +242,6 @@ function App() {
             Risk Score: {result.riskScore}%
           </p>
 
-          {/* 🔥 REASONS */}
           {result.reasons && result.reasons.length > 0 && (
             <div className="mt-4 text-yellow-300 text-sm">
               <p>⚠️ Reasons:</p>
