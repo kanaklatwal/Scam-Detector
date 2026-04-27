@@ -224,12 +224,23 @@ function App() {
 
         {/* MODE */}
         <div className="flex justify-center gap-4 mt-10 mb-6">
-          <button onClick={() => setMode("url")} className="px-4 py-2 rounded-full bg-blue-500 text-white">
-            URL Scanner
-          </button>
-          <button onClick={() => setMode("email")} className="px-4 py-2 rounded-full bg-white/10">
+        <button
+           onClick={() => setMode("url")}
+           className={`px-4 py-2 rounded-full ${
+           mode === "url" ? "bg-blue-500 text-white" : "bg-white/10"
+           }`}
+           >
+           URL Scanner
+        </button>
+
+        <button
+            onClick={() => setMode("email")}
+            className={`px-4 py-2 rounded-full ${
+            mode === "email" ? "bg-blue-500 text-white" : "bg-white/10"
+            }`}
+        >
             Email Scanner
-          </button>
+         </button>
         </div>
 
         {/* INPUT */}
