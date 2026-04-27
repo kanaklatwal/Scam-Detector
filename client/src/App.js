@@ -99,7 +99,7 @@ function App() {
     setResult(null);
 
     try {
-      const res = await axios.post("https://scam-detector-g7oe.onrender.com/check-url,t6", {
+      const res = await axios.post("https://scam-detector-g7oe.onrender.com/check-url", {
         subject,
         body,
       });
