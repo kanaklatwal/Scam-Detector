@@ -161,6 +161,23 @@ def predict():
 
         domain = get_domain(url)
 
+        if "." not in domain:
+            return jsonify({
+                "prediction": "Invalid",
+                "riskScore": 90,
+                "source": "Validation",
+                "reasons": ["Not a valid domain format"]
+            })
+
+         # Gibberish detection (random strings)
+        letters = re.sub(r'[^a-z]', '', domain)
+        if len(letters) > 8 and len(set(letters)) / len(letters) > 0.7:
+            return jsonify({
+            "prediction": "Suspicious",
+            "riskScore": 80,
+            "source": "Heuristic",
+            "reasons": ["Random/gibberish domain detected"]
+        })
         reasons = []
 
         if "@" in url:
