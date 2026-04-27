@@ -52,7 +52,7 @@ function App() {
     localStorage.setItem("emailHistory", JSON.stringify(updated));
   };
 
-  // ❌ DELETE ITEM
+  // ❌ DELETE
   const deleteItem = (index) => {
     if (mode === "url") {
       const updated = urlHistory.filter((_, i) => i !== index);
@@ -65,7 +65,7 @@ function App() {
     }
   };
 
-  // ❌ CLEAR ALL
+  // ❌ CLEAR
   const clearAll = () => {
     if (mode === "url") {
       setUrlHistory([]);
@@ -75,6 +75,13 @@ function App() {
       localStorage.removeItem("emailHistory");
     }
   };
+
+  // 🧠 SAFE RESULT MAPPING
+  const mapResult = (data) => ({
+    prediction: data?.prediction || "Error",
+    riskScore: data?.riskScore ?? data?.risk_score ?? 0,
+    reasons: Array.isArray(data?.reasons) ? data.reasons : [],
+  });
 
   // 🔥 URL API
   const checkWebsite = async () => {
@@ -89,9 +96,11 @@ function App() {
         { url }
       );
 
-      setResult(res.data);
-      saveUrlHistory(res.data);
-    } catch {
+      const fixed = mapResult(res.data);
+      setResult(fixed);
+      saveUrlHistory(fixed);
+    } catch (err) {
+      console.error(err);
       setResult({
         prediction: "Error",
         riskScore: 0,
@@ -113,15 +122,14 @@ function App() {
     try {
       const res = await axios.post(
         "https://scam-detector-2-rkdu.onrender.com/email",
-        {
-          subject,
-          body,
-        }
+        { subject, body }
       );
 
-      setResult(res.data);
-      saveEmailHistory(res.data);
-    } catch {
+      const fixed = mapResult(res.data);
+      setResult(fixed);
+      saveEmailHistory(fixed);
+    } catch (err) {
+      console.error(err);
       setResult({
         prediction: "Error",
         riskScore: 0,
@@ -135,26 +143,18 @@ function App() {
   // 🎨 UI helpers
   const getColor = (type) => {
     const t = normalize(type);
-
-    return t === "scam"
-      ? "text-red-500"
-      : t === "suspicious"
-      ? "text-yellow-500"
-      : t === "error"
-      ? "text-gray-400"
-      : "text-green-500";
+    if (t === "scam") return "text-red-500";
+    if (t === "suspicious") return "text-yellow-500";
+    if (t === "error") return "text-gray-400";
+    return "text-green-500";
   };
 
   const getIcon = (type) => {
     const t = normalize(type);
-
-    return t === "scam"
-      ? "❌"
-      : t === "suspicious"
-      ? "⚠️"
-      : t === "error"
-      ? "🚫"
-      : "✅";
+    if (t === "scam") return "❌";
+    if (t === "suspicious") return "⚠️";
+    if (t === "error") return "🚫";
+    return "✅";
   };
 
   const currentHistory = mode === "url" ? urlHistory : emailHistory;
@@ -223,9 +223,7 @@ function App() {
       </div>
 
       {/* LOADING */}
-      {loading && (
-        <div className="text-center mt-6">⏳ Checking...</div>
-      )}
+      {loading && <div className="text-center mt-6">⏳ Checking...</div>}
 
       {/* RESULT */}
       {result && !loading && (
@@ -236,8 +234,7 @@ function App() {
 
           <p>Risk Score: {result.riskScore}%</p>
 
-          {/* ✅ REASONS */}
-          {result.reasons && (
+          {result.reasons.length > 0 && (
             <ul className="mt-4 text-gray-300">
               {result.reasons.map((r, i) => (
                 <li key={i}>• {r}</li>
@@ -272,7 +269,6 @@ function App() {
         </div>
       )}
 
-      {/* FOOTER */}
       <div className="text-center text-gray-500 mt-10 pb-6 text-sm">
         Built with ❤️ using React + ML | ScamShield AI
       </div>
