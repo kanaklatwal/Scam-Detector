@@ -13,16 +13,20 @@ function App() {
   const [urlHistory, setUrlHistory] = useState([]);
   const [emailHistory, setEmailHistory] = useState([]);
 
-  // 🔁 normalize
   const normalize = (t) => t?.toLowerCase();
 
-  // LOAD HISTORY
   useEffect(() => {
     setUrlHistory(JSON.parse(localStorage.getItem("urlHistory")) || []);
     setEmailHistory(JSON.parse(localStorage.getItem("emailHistory")) || []);
   }, []);
 
-  // SAVE URL HISTORY
+  // ✅ FIX: normalize API response
+  const formatResponse = (data) => ({
+    prediction: data.prediction,
+    riskScore: data.riskScore || data.risk_score || 0,
+    reasons: data.reasons || [],
+  });
+
   const saveUrlHistory = (data) => {
     const updated = [
       {
@@ -37,7 +41,6 @@ function App() {
     localStorage.setItem("urlHistory", JSON.stringify(updated));
   };
 
-  // SAVE EMAIL HISTORY
   const saveEmailHistory = (data) => {
     const updated = [
       {
@@ -52,7 +55,6 @@ function App() {
     localStorage.setItem("emailHistory", JSON.stringify(updated));
   };
 
-  // ❌ DELETE
   const deleteItem = (index) => {
     if (mode === "url") {
       const updated = urlHistory.filter((_, i) => i !== index);
@@ -65,7 +67,6 @@ function App() {
     }
   };
 
-  // ❌ CLEAR
   const clearAll = () => {
     if (mode === "url") {
       setUrlHistory([]);
@@ -76,14 +77,7 @@ function App() {
     }
   };
 
-  // 🧠 SAFE RESULT MAPPING
-  const mapResult = (data) => ({
-    prediction: data?.prediction || "Error",
-    riskScore: data?.riskScore ?? data?.risk_score ?? 0,
-    reasons: Array.isArray(data?.reasons) ? data.reasons : [],
-  });
-
-  // 🔥 URL API
+  // 🔥 URL API FIX
   const checkWebsite = async () => {
     if (!url.trim()) return alert("Enter URL");
 
@@ -96,11 +90,11 @@ function App() {
         { url }
       );
 
-      const fixed = mapResult(res.data);
-      setResult(fixed);
-      saveUrlHistory(fixed);
-    } catch (err) {
-      console.error(err);
+      const formatted = formatResponse(res.data);
+      setResult(formatted);
+      saveUrlHistory(formatted);
+
+    } catch {
       setResult({
         prediction: "Error",
         riskScore: 0,
@@ -111,7 +105,7 @@ function App() {
     setLoading(false);
   };
 
-  // 🔥 EMAIL API
+  // 🔥 EMAIL API FIX
   const checkEmail = async () => {
     if (!subject.trim() && !body.trim())
       return alert("Enter email content");
@@ -122,14 +116,17 @@ function App() {
     try {
       const res = await axios.post(
         "https://scam-detector-2-rkdu.onrender.com/email",
-        { subject, body }
+        {
+          subject,
+          body,
+        }
       );
 
-      const fixed = mapResult(res.data);
-      setResult(fixed);
-      saveEmailHistory(fixed);
-    } catch (err) {
-      console.error(err);
+      const formatted = formatResponse(res.data);
+      setResult(formatted);
+      saveEmailHistory(formatted);
+
+    } catch {
       setResult({
         prediction: "Error",
         riskScore: 0,
@@ -140,21 +137,28 @@ function App() {
     setLoading(false);
   };
 
-  // 🎨 UI helpers
   const getColor = (type) => {
     const t = normalize(type);
-    if (t === "scam") return "text-red-500";
-    if (t === "suspicious") return "text-yellow-500";
-    if (t === "error") return "text-gray-400";
-    return "text-green-500";
+
+    return t === "scam"
+      ? "text-red-500"
+      : t === "suspicious"
+      ? "text-yellow-500"
+      : t === "error"
+      ? "text-gray-400"
+      : "text-green-500";
   };
 
   const getIcon = (type) => {
     const t = normalize(type);
-    if (t === "scam") return "❌";
-    if (t === "suspicious") return "⚠️";
-    if (t === "error") return "🚫";
-    return "✅";
+
+    return t === "scam"
+      ? "❌"
+      : t === "suspicious"
+      ? "⚠️"
+      : t === "error"
+      ? "🚫"
+      : "✅";
   };
 
   const currentHistory = mode === "url" ? urlHistory : emailHistory;
@@ -162,14 +166,12 @@ function App() {
   return (
     <div className="bg-[#0f172a] text-white min-h-screen">
 
-      {/* HEADER */}
       <div className="text-center pt-16">
         <h1 className="text-4xl font-bold">
           Detect Scams <span className="text-blue-500">Instantly</span>
         </h1>
       </div>
 
-      {/* MODE */}
       <div className="flex justify-center gap-4 mt-8">
         <button
           onClick={() => setMode("url")}
@@ -186,7 +188,6 @@ function App() {
         </button>
       </div>
 
-      {/* INPUT */}
       <div className="flex justify-center mt-6">
         {mode === "url" ? (
           <div className="flex gap-2">
@@ -222,10 +223,10 @@ function App() {
         )}
       </div>
 
-      {/* LOADING */}
-      {loading && <div className="text-center mt-6">⏳ Checking...</div>}
+      {loading && (
+        <div className="text-center mt-6">⏳ Checking...</div>
+      )}
 
-      {/* RESULT */}
       {result && !loading && (
         <div className="text-center mt-10">
           <h2 className={`text-2xl ${getColor(result.prediction)}`}>
@@ -244,7 +245,6 @@ function App() {
         </div>
       )}
 
-      {/* HISTORY */}
       {currentHistory.length > 0 && (
         <div className="mt-10 px-10">
           <div className="flex justify-between mb-3">
