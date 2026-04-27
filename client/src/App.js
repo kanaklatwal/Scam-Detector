@@ -25,15 +25,11 @@ function App() {
   const formatResponse = (data) => ({
     prediction: data.prediction,
     riskScore: data.riskScore || data.risk_score || 0,
-    reasons: data.reasons || [],
+    reasons: data.reasons || ["No details available"],
   });
 
   const saveUrlHistory = (data) => {
-    const updated = [
-      { url, prediction: data.prediction },
-      ...urlHistory,
-    ].slice(0, 5);
-
+    const updated = [{ url, prediction: data.prediction }, ...urlHistory].slice(0, 5);
     setUrlHistory(updated);
     localStorage.setItem("urlHistory", JSON.stringify(updated));
   };
@@ -125,22 +121,25 @@ function App() {
   const currentHistory = mode === "url" ? urlHistory : emailHistory;
 
   return (
-    <div className={`${dark ? "bg-[#0f172a] text-white" : "bg-gray-100 text-black"} min-h-screen transition-all`}>
+    <div className={`${dark ? "bg-[#0f172a] text-white" : "bg-gray-100 text-black"} min-h-screen`}>
 
       {/* HEADER */}
       <div className="text-center pt-16">
-        <h1 className="text-4xl font-bold animate-pulse">
+        <h1 className="text-5xl font-bold">
           Detect Scams <span className="text-blue-500">Instantly</span>
         </h1>
 
         <p className="text-gray-400 mt-3">
-          ScamShield AI helps you identify fraudulent websites and suspicious emails using machine learning.
+          ScamShield AI helps you identify fraudulent websites and suspicious emails using ML.
         </p>
       </div>
 
       {/* TOGGLE */}
       <div className="text-center mt-4">
-        <button onClick={() => setDark(!dark)} className="bg-blue-500 px-3 py-1 rounded">
+        <button
+          onClick={() => setDark(!dark)}
+          className="bg-blue-500 px-3 py-1 rounded"
+        >
           Toggle Mode
         </button>
       </div>
@@ -169,7 +168,7 @@ function App() {
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              className="px-4 py-2 rounded bg-gray-800 w-[300px]"
+              className="px-4 py-2 rounded bg-gray-800 w-[320px]"
               placeholder="Enter URL"
             />
             <button onClick={checkWebsite} className="bg-blue-500 px-4 rounded">
@@ -177,7 +176,7 @@ function App() {
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 w-[320px]">
             <input
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
@@ -201,20 +200,20 @@ function App() {
       {loading && <div className="text-center mt-6">⏳ Checking...</div>}
 
       {result && !loading && (
-        <div className="text-center mt-10 animate-fadeIn">
-          <h2 className={`text-2xl ${getColor(result.prediction)}`}>
-            {getIcon(result.prediction)} {result.prediction}
-          </h2>
+        <div className="flex justify-center mt-10">
+          <div className="bg-[#1e293b] p-6 rounded-xl shadow-lg w-[350px] text-center animate-bounce">
+            <h2 className={`text-2xl ${getColor(result.prediction)}`}>
+              {getIcon(result.prediction)} {result.prediction}
+            </h2>
 
-          <p>Risk Score: {result.riskScore}%</p>
+            <p className="mt-2">Risk Score: {result.riskScore}%</p>
 
-          {result.reasons.length > 0 && (
-            <ul className="mt-4 text-gray-300">
+            <ul className="mt-4 text-gray-300 text-sm">
               {result.reasons.map((r, i) => (
                 <li key={i}>• {r}</li>
               ))}
             </ul>
-          )}
+          </div>
         </div>
       )}
 
