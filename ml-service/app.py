@@ -82,9 +82,8 @@ def extract_features(url):
     parsed = urlparse(url)
     domain = parsed.netloc.lower()
 
-    keyword_flag = 1 if any(word in url.lower() for word in suspicious_words) else 0
     entropy_value = entropy(url)
-    random_value = random_score(url)
+    
     return [[
         len(url),
         url.count("."),
@@ -101,8 +100,7 @@ def extract_features(url):
         int("secure" in url.lower()),
         int("verify" in url.lower()),
 
-        entropy_value,
-        random_value
+        entropy_value
     ]]
 
 # -------- VIRUSTOTAL --------
@@ -186,8 +184,8 @@ def predict():
 
         # FEATURES
         features = extract_features(url)
-        entropy_value = features[0][-2]
-        random_value = features[0][-1]
+
+        entropy_value = features[0][-1]
 
         risk_boost = 0
 
@@ -199,9 +197,6 @@ def predict():
             risk_boost += 10
             reasons.append("Very long domain")
         
-        if random_value > 0.6:
-            risk_boost += 10
-            reasons.append("Random-looking domain")
         if "login" in url.lower():
              risk_boost += 10
              reasons.append("Login keyword detected")
