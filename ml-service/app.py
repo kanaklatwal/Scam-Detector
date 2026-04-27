@@ -22,13 +22,56 @@ vectorizer = joblib.load("vectorizer.pkl")
 cache = {}
 
 SAFE_DOMAINS = [
-    "google.com", "facebook.com", "youtube.com",
-    "amazon.com", "instagram.com"
+    # Search & Social
+    "google.com", "google.co.in", "google.co.uk", "google.co.jp",
+    "facebook.com", "youtube.com", "twitter.com", "x.com",
+    "instagram.com", "linkedin.com", "reddit.com", "pinterest.com",
+    "tiktok.com", "snapchat.com", "whatsapp.com", "telegram.org",
+    "discord.com", "twitch.tv", "tumblr.com", "quora.com",
+    # Shopping & Commerce
+    "amazon.com", "amazon.in", "amazon.co.uk", "flipkart.com",
+    "ebay.com", "walmart.com", "alibaba.com", "aliexpress.com",
+    "shopify.com", "etsy.com", "target.com", "bestbuy.com",
+    # Tech & Software
+    "microsoft.com", "apple.com", "github.com", "gitlab.com",
+    "stackoverflow.com", "openai.com", "chatgpt.com",
+    "mozilla.org", "wikipedia.org", "wikimedia.org",
+    "zoom.us", "slack.com", "notion.so", "figma.com",
+    "atlassian.com", "bitbucket.org", "npmjs.com", "pypi.org",
+    "docker.com", "cloudflare.com", "vercel.com", "netlify.com",
+    "heroku.com", "digitalocean.com", "aws.amazon.com",
+    # Email & Productivity
+    "outlook.com", "live.com", "hotmail.com", "yahoo.com",
+    "protonmail.com", "proton.me", "icloud.com",
+    "dropbox.com", "drive.google.com", "office.com",
+    # Streaming & Media
+    "netflix.com", "spotify.com", "hulu.com", "disneyplus.com",
+    "primevideo.com", "hbomax.com", "soundcloud.com",
+    "imdb.com", "rottentomatoes.com",
+    # News & Education
+    "bbc.com", "bbc.co.uk", "cnn.com", "nytimes.com",
+    "reuters.com", "theguardian.com", "medium.com",
+    "coursera.org", "udemy.com", "edx.org", "khanacademy.org",
+    # Finance & Banking
+    "paypal.com", "stripe.com", "razorpay.com",
+    "chase.com", "bankofamerica.com", "wellsfargo.com",
+    # Misc Popular
+    "wordpress.com", "wordpress.org", "blogger.com",
+    "archive.org", "bing.com", "duckduckgo.com",
+    "booking.com", "airbnb.com", "uber.com", "lyft.com",
+    "grammarly.com", "canva.com", "adobe.com",
 ]
 
 SCAM_DOMAINS = [
     "login-free-offer.xyz",
     "free-money-now.xyz"
+]
+
+# Common TLDs that are legitimate
+COMMON_TLDS = [
+    "com", "org", "net", "edu", "gov", "io", "co", "us", "uk", "in",
+    "de", "fr", "jp", "au", "ca", "br", "it", "es", "nl", "ru",
+    "tv", "me", "info", "biz", "app", "dev", "ai", "tech",
 ]
 
 # -------- HELPERS --------
@@ -69,11 +112,30 @@ def is_scam(domain):
     return domain in SCAM_DOMAINS
 
 def is_gibberish(text):
+    """Improved gibberish detection that doesn't flag real words."""
     letters = re.sub(r'[^a-z]', '', text.lower())
-    if len(letters) < 5:
+    if len(letters) < 4:
         return True
+
+    # Check vowel ratio — real words typically have 30-60% vowels
+    vowels = sum(1 for c in letters if c in 'aeiou')
+    vowel_ratio = vowels / len(letters)
+    if vowel_ratio < 0.1 or vowel_ratio > 0.8:
+        return True
+
+    # Check for long consonant clusters (4+ consonants in a row is unusual)
+    consonant_clusters = re.findall(r'[^aeiou]{4,}', letters)
+    if len(consonant_clusters) >= 2:
+        return True
+
+    # Very high unique ratio only matters for longer strings and needs to be
+    # combined with other signals to avoid flagging real words
     unique_ratio = len(set(letters)) / len(letters)
-    return unique_ratio > 0.7
+    if unique_ratio > 0.9 and len(letters) > 10:
+        return True
+
+    return False
+
 # -------- FEATURES --------
 
 suspicious_words = ["login", "verify", "account", "bank", "secure", "update", "free", "win"]
@@ -169,15 +231,24 @@ def predict():
                 "reasons": ["Not a valid domain format"]
             })
 
-         # Gibberish detection (random strings)
-        letters = re.sub(r'[^a-z]', '', domain)
-        if len(letters) > 8 and len(set(letters)) / len(letters) > 0.7:
+        # ✅ Check safe domains FIRST — skip all heuristics for known-good sites
+        if is_safe(domain):
             return jsonify({
-            "prediction": "Suspicious",
-            "riskScore": 80,
-            "source": "Heuristic",
-            "reasons": ["Random/gibberish domain detected"]
-        })
+                "prediction": "Genuine",
+                "riskScore": 5,
+                "source": "Whitelist",
+                "reasons": ["Known trusted domain"]
+            })
+
+        # Gibberish detection (random strings) — only for non-whitelisted domains
+        domain_name = domain.split(".")[0]  # Extract just the name part (e.g., "instagram" from "instagram.com")
+        if is_gibberish(domain_name) and len(domain_name) > 6:
+            return jsonify({
+                "prediction": "Suspicious",
+                "riskScore": 80,
+                "source": "Heuristic",
+                "reasons": ["Random/gibberish domain detected"]
+            })
         reasons = []
 
         if "@" in url:
