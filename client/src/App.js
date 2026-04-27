@@ -166,7 +166,7 @@ function App() {
       ? "❌"
       : type === "Suspicious"
       ? "⚠️"
-      : type === "Genuine"
+      : type === "Genuine" || type === "safe"
       ? "✅"
       : type === "Error"
       ? "🚫"
