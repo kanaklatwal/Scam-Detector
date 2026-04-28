@@ -71,7 +71,7 @@ function App() {
 
     try {
       const res = await axios.post(
-        "http://localhost:8000/predict",
+        "https://scam-detector-2-rkdu.onrender.com/predict",
         { url}
       );
     
@@ -96,7 +96,7 @@ function App() {
     setResult(null);
 
     try {
-      const res = await axios.post("http://localhost:8000/email", {
+      const res = await axios.post("https://scam-detector-2-rkdu.onrender.com/email", {
         subject,
         body,
       });
