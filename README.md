@@ -41,3 +41,9 @@ Chrome extension
 👩‍💻 Author
 
 Kanak Latwal
+
+## Screenshots
+
+![Home](Screenshot%20(1156).png)
+
+![Detection](Screenshot%20(1158).png)
